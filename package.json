@@ -1,0 +1,17 @@
+{
+  "title": "CRLFilter",
+  "name": "crlfilter",
+  "version": "0.0.1",
+  "description": "Certificate Revocation checking using bloom filters",
+  "main": "index.js",
+  "author": "Aditya Rao",
+  "engines": {
+    "firefox": ">=38.0a1",
+    "fennec": ">=38.0a1"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bloem": "*",
+    "diff": "*"
+  }
+}
