@@ -11,8 +11,8 @@
     },
     "license": "MIT",
     "dependencies": {
-        "bloem": "*",
-        "diff": "*"
+        "buffer": "*",
+        "bloem": "*"
     },
     "preferences": [{
         "name": "filterType",

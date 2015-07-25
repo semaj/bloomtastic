@@ -83,11 +83,11 @@ var CRLFilter = {
             if (fields.filter) {
                 //for (var i in fields.filter.filter) log(i);
                 //log(typeof(fields.filter.filter.bitfield));
-                self_.filter = bloem.SafeBloem.destringify(JSON.parse(fields.filter));
+                let temp = JSON.parse(fields.filter);
+                temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
+                self_.filter = bloem.SafeBloem.destringify(temp);
                 self_.filter.add('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74');
-                log(JSON.parse(fields.filter));
-                let filter = new bloem.SafeBloem(100,0.01);
-                log(filter);
+                log(self_.filter.has('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74'));
                 self_.lastUpdate = fields.date;
                 self_.type = fields.type;
                 new JSONStore(ADDON_ID,"filter",DEFAULT).then(store => {
@@ -216,7 +216,6 @@ var ProgressListener = {
 
                 //TODO Currently it simply stops at filter, need to 
                 // send request to server for check
-                log(filter);
                 if (filter.has(serialNumber)) {
                     log('********** Possibly Not Secure!');
                     log(aRequest instanceof Ci.nsIRequest);
@@ -272,7 +271,7 @@ var WindowListener = {
 
 // Updating the filter when the filter type has changed
 simple_prefs.on("filterType", function () {
-    CRLFilter.type = prefs.filterType;
+    CRLFilter.type = preferences.filterType;
     CRLFilter.syncFilter()
 });
 
@@ -296,7 +295,7 @@ function sendFilterRequest(parms,callback) {
     if (parms) {
         url += '?';
         for (var parm in parms) {
-            url += (parm + '=' + parms[parm]);
+            url += (parm + '=' + parms[parm] + '&');
         }
     }
     Request({
