@@ -19,17 +19,17 @@
         "title": "Security Strength for the CRLFilter",
         "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
         "type": "menulist",
-        "value": 2,
+        "value": 1,
         "options": [{
-            "value": "0",
+            "value": 0,
             "label": "Revoked EV certificates and top Alexa 100"
         },
         {
-            "value": "1",
+            "value": 1,
             "label": "Revoked certificates from Top Alexa 1000"
         },
         {
-            "value": "2",
+            "value": 2,
             "label": "Revoked certificates from Top Alexa 10000"
         }]
     },
@@ -39,6 +39,12 @@
         "description": "Update frequency for filter sync (number of days)",
         "type": "integer",
         "value": 1
+    },
+    {
+        "name": "lastUpdate",
+        "title": "Last update of filter",
+        "description": "Last update time of the filter on the server, read-only",
+        "type": "string"
     }],
     "serverurl": "http://localhost:3130/"
 }

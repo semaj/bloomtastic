@@ -9,6 +9,7 @@ const fs = require('sdk/io/fs'),
       path = require('sdk/fs/path'),
       file = require('sdk/io/file'),
       self = require('sdk/self'),
+      utils = require('sdk/window/utils'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
       bloem = require('bloem'),
@@ -43,17 +44,8 @@ var CRLFilter = {
     init: function() {
         // Initiate filter if not already done
         // Load it from data folder, else sync with server
-        let crlfilter = this;
-        if (!this.filter) {
-            new JSONStore(ADDON_ID,'filter',DEFAULT).then(store => {
-                if (!store.data.filter) {
-                    return crlfilter.syncFilter();
-                }
-                crlfilter.filter = store.data.filter;
-                crlfilter.lastUpdate = store.data.lastUpdate;
-                crlfilter.type = store.data.type;
-            });
-        }
+
+        this.getFilter();
         //this.updateInterval = this.updateInterval || setInterval(this.updateFilter,1000*60*60*2);
     },
 
@@ -63,56 +55,73 @@ var CRLFilter = {
         //return this.updateInterval && clearInterval(this.updateInterval);
     },
 
-    syncFilter : function() {
+    syncFilter : function(store) {
         // Used to sync the filter with server
         // Either on startup (when no filter cached)
         // Or to update the filter
         let self_ = this;    
         let parms = {};
-        if (this.lastUpdate) {
-            parms.date = this.lastUpdate;
-        }
-        if (this.type) {
-            parms.type = this.type;
-        }
-        return sendFilterRequest(parms,function(response) {
-            if (!response.text || response.text.length === 0) {
-                throw new Error('Unable to connect to server');
+        try {
+            if (this.lastUpdate) {
+                parms.date = this.lastUpdate;
             }
-            var fields = JSON.parse(response.text);
-            if (fields.filter) {
-                //for (var i in fields.filter.filter) log(i);
-                //log(typeof(fields.filter.filter.bitfield));
-                let temp = JSON.parse(fields.filter);
-                temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
-                self_.filter = bloem.SafeBloem.destringify(temp);
-                self_.filter.add('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74');
-                log(self_.filter.has('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74'));
-                self_.lastUpdate = fields.date;
-                self_.type = fields.type;
-                new JSONStore(ADDON_ID,"filter",DEFAULT).then(store => {
-                    store.data.filter = self_.filter;
-                    store.data.lastUpdate = self_.lastUpdate;
-                    store.data.type = self_.type;
-                    store.save();
-                });
-            } else if (fields.diff) {
-                if (!self_.filter) {
-                    //TODO Possibility of infinite loop
-                    self_.lastUpdate = undefined;
-                    return self_.syncFilter();
+            if (this.type) {
+                parms.type = this.type;
+            }
+            log('Sending request to server');
+            return sendFilterRequest(parms,function(response) {
+                if (!response.text || response.text.length === 0) {
+                    log('Unable to connect to server');
                 }
+                log('Parsing reponse');
+                var fields = JSON.parse(response.text);
+                if (fields.filter) {
+                    //for (var i in fields.filter.filter) log(i);
+                    //log(typeof(fields.filter.filter.bitfield));
+                    let temp = JSON.parse(fields.filter);
+                    temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
+                    self_.filter = bloem.SafeBloem.destringify(temp);
+                    self_.filter.add('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74');
+                    self_.lastUpdate = fields.date;
+                    self_.type = fields.type;
+                    preferences.lastUpdate = self_.lastUpdate;
+                    preferences.type = self_.type;
+                    log(self_.type);
+                    preferences.lastUpdate = fields.date;
+                    if (store) {
+                        saveFilter(store);
+                    } else {
+                        new JSONStore(ADDON_ID,"filter",DEFAULT).then(saveFilter);
+                    }
+                } else if (fields.diff) {
+                    if (!self_.filter) {
+                        //TODO Possibility of infinite loop
+                        self_.lastUpdate = undefined;
+                        return self_.syncFilter();
+                    }
 
-                //TODO Need to read and change current filter
-            }
-        });
+                    //TODO Need to read and change current filter
+                }
+            });
+        } catch(err) {
+            log(err);
+        }
 
     },
 
     getFilter: function() {
         if (!this.filter) {
-            //TODO First check if the filter exists in the data directory
-            return this.syncFilter();    
+            //First check if the filter exists in the data directory
+            new JSONStore(ADDON_ID,'filter',DEFAULT).then(store => {
+                if (!store.data.filter) {
+                    return this.syncFilter(store);    
+                }    
+                this.filter = store.data.filter;
+                this.lastUpdate = store.data.lastUpdate;
+                this.type = store.data.type;
+                preferences.lastUpdate = this.lastUpdate;
+                preferences.type = this.type;
+            });
         }    
         return this.filter;
     },
@@ -124,7 +133,7 @@ var CRLFilter = {
     }
 };
 
-//TODO Implement the app
+//Implement the app
 var CRLFilterApp = {
     prefs: null,
 
@@ -174,11 +183,11 @@ var ProgressListener = {
     },
 
     onLocationChange: function(aProgress, aRequest, aURI) {
-                          // This fires when the location bar changes; that is load event is confirmed
-                          // or when the user switches tabs. If you use ProgressListener for more than one tab/window,
-                          // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
-                          log("At location change");
-                      },
+      // This fires when the location bar changes; that is load event is confirmed
+      // or when the user switches tabs. If you use ProgressListener for more than one tab/window,
+      // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
+      log("At location change");
+    },
 
     // For definitions of the remaining functions see related documentation
     onProgressChange: function(aWebProgress, aRequest, curSelf, maxSelf, curTot, maxTot) { log("progress changed");},
@@ -190,7 +199,7 @@ var ProgressListener = {
         let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
         let browser = gBrowser.getBrowserForDocument(domWin.top.document);
         */
-},
+    },
 
     onSecurityChange: function(aWebProgress, aRequest, aState) {
         log("Here at what's most important");
@@ -216,21 +225,23 @@ var ProgressListener = {
 
                 //TODO Currently it simply stops at filter, need to 
                 // send request to server for check
-                if (filter.has(serialNumber)) {
+                if (!isCertValid(cert) || filter.has(serialNumber)) {
                     log('********** Possibly Not Secure!');
-                    log(aRequest instanceof Ci.nsIRequest);
-                    log(aState);
-                    aRequest.cancel(Cr.NS_ERROR_DOM_SECURITY_ERR);
-                    
-                    let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
-                    let url = aRequest.name;
-                    let gBrowser = utils.getMostRecentBrowserWindow().gBrowser; 
-                    let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
-                    let browser = gBrowser.getBrowserForDocument(domWin.top.document);
-                    let abouturl = 'about:neterror?e=nssFailure2&u=' + url +'&d=' + contentReplace[0] + url + contentReplace[1];
-                    log(abouturl);
-                    browser.loadURI(abouturl);
-                    log('Done stopping');
+                    try {
+                        aRequest.cancel(Cr.NS_ERROR_DOM_SECURITY_ERR);
+                        
+                        let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
+                        let url = aRequest.name;
+                        let gBrowser = utils.getMostRecentBrowserWindow().gBrowser; 
+                        let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
+                        let browser = gBrowser.getBrowserForDocument(domWin.top.document);
+                        let abouturl = 'about:neterror?e=nssFailure2&u=' + url +'&d=' + contentReplace[0] + url + contentReplace[1];
+                        log(abouturl);
+                        browser.loadURI(abouturl);
+                        log('Done stopping');
+                    } catch(e) {
+                        log(e);    
+                    }
                 }
             }
         } else if ((state & Ci.nsIWebProgressListener.STATE_IS_INSECURE)) {
@@ -271,8 +282,14 @@ var WindowListener = {
 
 // Updating the filter when the filter type has changed
 simple_prefs.on("filterType", function () {
-    CRLFilter.type = preferences.filterType;
-    CRLFilter.syncFilter()
+    //TODO Some problem while changing filter type
+    log('Changing filter type');
+    try {
+        CRLFilter.type = preferences.filterType;
+        CRLFilter.syncFilter();
+    } catch (err) {
+        log(err);
+    }
 });
 
 function isCertValid(cert) {
@@ -291,13 +308,17 @@ function forEachOpenWindow(todo) {
 }
 
 function sendFilterRequest(parms,callback) {
+    //TODO Need to fix the url ending &
     let url = serverurl + 'filter';
     if (parms) {
+        log(parms);
         url += '?';
         for (var parm in parms) {
             url += (parm + '=' + parms[parm] + '&');
         }
+        url.slice(0,url.length-1);
     }
+    console.log(url);
     Request({
         url: url,
         contentType: 'application/json',
@@ -305,4 +326,15 @@ function sendFilterRequest(parms,callback) {
     }).get();
 }
 
+function saveFilter(store) {
+    try {
+    store.data.filter = CRLFilter.filter;
+    store.data.lastUpdate = CRLFilter.lastUpdate;
+    store.data.type = CRLFilter.type;
+    store.save();
+    log('Filter saved');
+    } catch(err) {
+        log(err);
+    }
+}
 module.exports = CRLFilterApp;
