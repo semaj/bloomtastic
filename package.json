@@ -1,17 +1,44 @@
 {
-  "title": "CRLFilter",
-  "name": "crlfilter",
-  "version": "0.0.1",
-  "description": "Certificate Revocation checking using bloom filters",
-  "main": "index.js",
-  "author": "Aditya Rao",
-  "engines": {
-    "firefox": ">=38.0a1",
-    "fennec": ">=38.0a1"
-  },
-  "license": "MIT",
-  "dependencies": {
-    "bloem": "*",
-    "diff": "*"
-  }
+    "title": "CRLFilter",
+    "name": "crlfilter",
+    "version": "0.0.1",
+    "description": "Certificate Revocation checking using bloom filters",
+    "main": "index.js",
+    "author": "Aditya Rao",
+    "engines": {
+        "firefox": ">=38.0a1",
+        "fennec": ">=38.0a1"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "bloem": "*",
+        "diff": "*"
+    },
+    "preferences": [{
+        "name": "filterType",
+        "title": "Security Strength for the CRLFilter",
+        "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
+        "type": "menulist",
+        "value": 2,
+        "options": [{
+            "value": "0",
+            "label": "Revoked EV certificates and top Alexa 100"
+        },
+        {
+            "value": "1",
+            "label": "Revoked certificates from Top Alexa 1000"
+        },
+        {
+            "value": "2",
+            "label": "Revoked certificates from Top Alexa 10000"
+        }]
+    },
+    {
+        "name": "updateInterval",
+        "title": "Frequency of filter updates",
+        "description": "Update frequency for filter sync (number of days)",
+        "type": "integer",
+        "value": 1
+    }],
+    "serverurl": "http://localhost:3130/"
 }
