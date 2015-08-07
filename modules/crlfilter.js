@@ -10,6 +10,9 @@ const self = require('sdk/self'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
       bloem = require('bloem'),
+      tabs = require('sdk/tabs'),
+      ui = require('sdk/ui'),
+      panel = require('sdk/panel'),
       //Buffer = require('sdk/io/buffer').Buffer,
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
@@ -37,6 +40,7 @@ var CRLFilter = {
     filter : undefined,
     lastUpdate: undefined,
     type: undefined,
+    enabled: false,
 
     init: function() {
         // Initiate filter if not already done
@@ -147,8 +151,8 @@ var CRLFilter = {
         //                2 if revoked
         let serial = cert.serialNumber;
         let ca_issuer;
-        return  (!isCertValid(cert)) ? 2 :
-                (((this.filter !== undefined) && 
+        return  (!isCertValid(cert)) ? 2 : 
+                ((this.enabled && (this.filter !== undefined) && 
                 this.filter.has(serial) && 
                 this.checkSerialServer(serial,ca_issuer)) || 0);
     },
@@ -163,6 +167,17 @@ var CRLFilter = {
 
     filterInitialized: function() {
         return this.filter !== undefined;
+    },
+
+    flipEnabled: function(checked) {
+        if (checked) {
+            this.enabled = true;    
+            if (!this.filter) {
+                this.getFilter();    
+            } 
+        } else {
+            this.enabled = false;    
+        } 
     }
 };
 
@@ -319,6 +334,18 @@ var WindowListener = {
        },
     onWindowTitleChange: function (xulWindow, newTitle) {}
 };
+
+var toggleButton = ui.ToggleButton({
+    id: 'mainButton',
+    label: 'CRLfilter',
+    icon: './CRLf_red.ico',
+    onChange: function(state) {
+        CRLFilter.enabled = state.checked;    
+        toggleButton.icon = (state.checked) ? 
+                        './CRLf_green.ico' :
+                        './CRLf_red.ico';
+    }
+});
 
 // Updating the filter when the filter type has changed
 simple_prefs.on("filterType", function () {
