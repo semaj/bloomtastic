@@ -5,15 +5,12 @@ const {pathFor,platform} = require('sdk/system');
 Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
 Cu.import("resource://gre/modules/Services.jsm");
 
-const fs = require('sdk/io/fs'),
-      path = require('sdk/fs/path'),
-      file = require('sdk/io/file'),
-      self = require('sdk/self'),
+const self = require('sdk/self'),
       utils = require('sdk/window/utils'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
       bloem = require('bloem'),
-      Buffer = require('sdk/io/buffer').Buffer,
+      //Buffer = require('sdk/io/buffer').Buffer,
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
@@ -61,6 +58,7 @@ var CRLFilter = {
         // Or to update the filter
         let self_ = this;    
         let parms = {};
+        log('Current filter type:' + this.type);
         try {
             if (this.lastUpdate) {
                 parms.date = this.lastUpdate;
@@ -74,19 +72,18 @@ var CRLFilter = {
                     log('Unable to connect to server');
                 }
                 log('Parsing reponse');
-                var fields = JSON.parse(response.text);
+                let fields = JSON.parse(response.text);
                 if (fields.filter) {
-                    //for (var i in fields.filter.filter) log(i);
+                    //for (let i in fields.filter.filter) log(i);
                     //log(typeof(fields.filter.filter.bitfield));
                     let temp = JSON.parse(fields.filter);
                     temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
                     self_.filter = bloem.SafeBloem.destringify(temp);
-                    self_.filter.add('04:C8:AD:79:46:14:04:F1:6E:91:7B:02:DE:E5:75:74');
+                    self_.filter.add('09:8D:04:63:44:BB:A0:FD:0D:21:6C:C4:13:83:56:7D');
                     self_.lastUpdate = fields.date;
                     self_.type = fields.type;
                     preferences.lastUpdate = self_.lastUpdate;
                     preferences.type = self_.type;
-                    log(self_.type);
                     preferences.lastUpdate = fields.date;
                     if (store) {
                         saveFilter(store);
@@ -101,6 +98,21 @@ var CRLFilter = {
                     }
 
                     //TODO Need to read and change current filter
+                    for (let prop in fields.diff) {
+                        if (prop !== 'buffer') {
+                            self_.filter[prop] = fields.diff[prop];    
+                        }
+                    }
+
+                    let buffer = self_.filter.filter.bitfield.buffer;
+                    if ('buffer' in fields.diff) {
+                        for (let i in fields.diff.buffer) {
+                            buffer[parseInt(i)] = fields.diff.buffer[i];
+                        }    
+                    }
+
+                    self_.lastUpdated = fields.lastUpdated;
+                    self_.type = fields.type;
                 }
             });
         } catch(err) {
@@ -128,8 +140,29 @@ var CRLFilter = {
 
     updateFilter: function() {},
 
-    checkSerial: function(serial) {
-        return this.filter && this.filter.has(serial);
+    checkSerial: function(cert) {
+        //TODO Possible fix for CA issuer name
+        // Return values: 0 if not revoked
+        //                1 if undetermined
+        //                2 if revoked
+        let serial = cert.serialNumber;
+        let ca_issuer;
+        return  (!isCertValid(cert)) ? 2 :
+                (((this.filter !== undefined) && 
+                this.filter.has(serial) && 
+                this.checkSerialServer(serial,ca_issuer)) || 0);
+    },
+
+    checkSerialServer: function(serial,ca_issuer) {
+        // TODO Should check with server on certificate revocation,
+        // now returns 1 for to decide on hard fail check
+        // should return 2 if certificate is indeed revoked
+        log(preferences.hardFail);
+        return 1;
+    },
+
+    filterInitialized: function() {
+        return this.filter !== undefined;
     }
 };
 
@@ -204,7 +237,7 @@ var ProgressListener = {
     onSecurityChange: function(aWebProgress, aRequest, aState) {
         log("Here at what's most important");
         log(aRequest.name);
-        var state = aState;
+        let state = aState;
         let filter = CRLFilter.filter;
         if (enabled &&
             (state & Ci.nsIWebProgressListener.STATE_IS_SECURE) && 
@@ -215,21 +248,27 @@ var ProgressListener = {
             }
             log("here here here!!!!!!");
             log(aWebProgress.securityUI instanceof Ci.nsISecureBrowserUI);
-            var secUI = aWebProgress.securityUI;
+            let secUI = aWebProgress.securityUI;
             secUI.QueryInterface(Ci.nsISSLStatusProvider);
             if (secUI.SSLStatus) {
-                let cert = secUI.SSLStatus.serverCert;
-                let serialNumber = cert.serialNumber;
-                log('Here!');
-                log(serialNumber);
+                try {
+                    let cert = secUI.SSLStatus.serverCert;
+                    let serialNumber = cert.serialNumber;
+                    log('Here!');
+                    log(serialNumber);
 
-                //TODO Currently it simply stops at filter, need to 
-                // send request to server for check
-                if (!isCertValid(cert) || filter.has(serialNumber)) {
-                    log('********** Possibly Not Secure!');
-                    try {
-                        aRequest.cancel(Cr.NS_ERROR_DOM_SECURITY_ERR);
-                        
+                    //TODO Currently it simply stops at filter, need to 
+                    // send request to server for check
+                    let revokeCheck = CRLFilter.checkSerial(cert);
+                    if (revokeCheck > 0) {
+                        log('********** Possibly Not Secure!');
+                        if (revokeCheck === 1 && preferences.hardFail === 0) {
+                            // TODO Send message to user regarding this event
+                            log('Allowed due to soft fail');
+                            return;
+                        }
+                        //aRequest.cancel(Cr.NS_ERROR_DOM_SECURITY_ERR);
+                            
                         let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
                         let url = aRequest.name;
                         let gBrowser = utils.getMostRecentBrowserWindow().gBrowser; 
@@ -237,11 +276,12 @@ var ProgressListener = {
                         let browser = gBrowser.getBrowserForDocument(domWin.top.document);
                         let abouturl = 'about:neterror?e=nssFailure2&u=' + url +'&d=' + contentReplace[0] + url + contentReplace[1];
                         log(abouturl);
-                        browser.loadURI(abouturl);
+                        browser.loadURIWithFlags(abouturl, 2048);
+                        //log(browser);
                         log('Done stopping');
-                    } catch(e) {
+                    } 
+                } catch(e) {
                         log(e);    
-                    }
                 }
             }
         } else if ((state & Ci.nsIWebProgressListener.STATE_IS_INSECURE)) {
@@ -254,7 +294,7 @@ var ProgressListener = {
 
 var WindowListener = {
     onOpenWindow: function (xulWindow) {
-          var window = xulWindow
+          let window = xulWindow
               .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
               .getInterface(Components.interfaces.nsIDOMWindow);
 
@@ -268,7 +308,7 @@ var WindowListener = {
           window.addEventListener("load", onWindowLoad);
       },
     onCloseWindow: function (xulWindow) {
-           var window = xulWindow
+           let window = xulWindow
                .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
                .getInterface(Components.interfaces.nsIDOMWindow);
            if (window.document.documentElement
@@ -300,7 +340,7 @@ function isCertValid(cert) {
 
 function forEachOpenWindow(todo) {
     log('forEachOpenWindow');
-    var windows = Services.wm.getEnumerator("navigator:browser");
+    let windows = Services.wm.getEnumerator("navigator:browser");
     while (windows.hasMoreElements()) {
         todo(windows.getNext()
                 .QueryInterface(Ci.nsIDOMWindow));
@@ -313,7 +353,7 @@ function sendFilterRequest(parms,callback) {
     if (parms) {
         log(parms);
         url += '?';
-        for (var parm in parms) {
+        for (let parm in parms) {
             url += (parm + '=' + parms[parm] + '&');
         }
         url.slice(0,url.length-1);
@@ -328,13 +368,14 @@ function sendFilterRequest(parms,callback) {
 
 function saveFilter(store) {
     try {
-    store.data.filter = CRLFilter.filter;
-    store.data.lastUpdate = CRLFilter.lastUpdate;
-    store.data.type = CRLFilter.type;
-    store.save();
-    log('Filter saved');
+        store.data.filter = CRLFilter.filter;
+        store.data.lastUpdate = CRLFilter.lastUpdate;
+        store.data.type = CRLFilter.type;
+        store.save();
+        log('Filter saved');
     } catch(err) {
         log(err);
     }
 }
+
 module.exports = CRLFilterApp;
