@@ -18,7 +18,7 @@ const self = require('sdk/self'),
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
       log = console.error.bind(console);
-var contentReplace = ["An%20error%20occurred%20during%20a%20connection%20to%20",".%20Peer%27s%20Certificate%20has%20been%20revoked.%20(Error%20code%3A%20sec_error_revoked_certificate)."];   
+var contentReplace = ["An%20error%20occurred%20during%20a%20connection%20to%20",".%20Peer%27s%20Certificate%20has%20been%20revoked.%20(Error%20code%3A%20sec_error_revoked_certificate). Blocked by CRLFilter."];   
 var enabled = true;
 var ADDON_ID = self.id;
 var JSONStore = require('./jsonstore');
@@ -36,6 +36,7 @@ new JSONStore(ADDON_ID, "config", {}).then(store => {
 });
 */
 
+// Main logic handling of filters and revocation checking
 var CRLFilter = {
     filter : undefined,
     lastUpdate: undefined,
@@ -46,6 +47,7 @@ var CRLFilter = {
         // Initiate filter if not already done
         // Load it from data folder, else sync with server
 
+        this.enabled = preferences.enabled;
         this.getFilter();
         //this.updateInterval = this.updateInterval || setInterval(this.updateFilter,1000*60*60*2);
     },
@@ -102,6 +104,8 @@ var CRLFilter = {
                     }
 
                     //TODO Need to read and change current filter
+                    //     Not properly done yet, especially for inner
+                    //     properties
                     for (let prop in fields.diff) {
                         if (prop !== 'buffer') {
                             self_.filter[prop] = fields.diff[prop];    
@@ -152,9 +156,9 @@ var CRLFilter = {
         let serial = cert.serialNumber;
         let ca_issuer;
         return  (!isCertValid(cert)) ? 2 : 
-                ((this.enabled && (this.filter !== undefined) && 
+                ((this.filter !== undefined) && 
                 this.filter.has(serial) && 
-                this.checkSerialServer(serial,ca_issuer)) || 0);
+                this.checkSerialServer(serial,ca_issuer)) || 0;
     },
 
     checkSerialServer: function(serial,ca_issuer) {
@@ -254,7 +258,7 @@ var ProgressListener = {
         log(aRequest.name);
         let state = aState;
         let filter = CRLFilter.filter;
-        if (enabled &&
+        if (CRLFilter.enabled &&
             (state & Ci.nsIWebProgressListener.STATE_IS_SECURE) && 
             filter) {
             log('Secure');
@@ -338,14 +342,16 @@ var WindowListener = {
 var toggleButton = ui.ToggleButton({
     id: 'mainButton',
     label: 'CRLfilter',
-    icon: './CRLf_red.ico',
+    icon: changeIcon(preferences.enabled),
+    checked: preferences.enabled,
     onChange: function(state) {
         CRLFilter.enabled = state.checked;    
-        toggleButton.icon = (state.checked) ? 
-                        './CRLf_green.ico' :
-                        './CRLf_red.ico';
+        preferences.enabled = state.checked;
+        toggleButton.icon = changeIcon(state.checked);
     }
 });
+
+//var messagePanel = panel
 
 // Updating the filter when the filter type has changed
 simple_prefs.on("filterType", function () {
@@ -357,6 +363,16 @@ simple_prefs.on("filterType", function () {
     } catch (err) {
         log(err);
     }
+});
+
+simple_prefs.on("enabled", function() {
+    try {
+        CRLFilter.flipEnabled(preferences.enabled);
+        toggleButton.checked = preferences.enabled;
+        toggleButton.icon = changeIcon(preferences.enabled);
+    } catch (err) {
+        log(err);    
+    }    
 });
 
 function isCertValid(cert) {
@@ -403,6 +419,10 @@ function saveFilter(store) {
     } catch(err) {
         log(err);
     }
+}
+
+function changeIcon(checked) {
+    return (checked) ? './CRLf_green.ico' : './CRLf_red.ico';
 }
 
 module.exports = CRLFilterApp;

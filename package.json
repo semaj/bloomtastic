@@ -15,6 +15,30 @@
         "bloem": "*"
     },
     "preferences": [{
+        "name": "enabled",
+        "title": "CRLFilter Enabled",
+        "description": "Choose to enable certification revocation check using CRLFilter",
+        "type": "bool",
+        "value": true
+    },
+    {
+        "name": "hardFail",
+        "title": "Fail type",
+        "description": "Choose what the app must do when revocation check fails",
+        "type": "radio",
+        "value": 0,
+        "options": [
+            {
+                "value": 0,
+                "label": "Soft Fail"
+            },
+            {
+                "value": 1,
+                "label": "Hard Fail"
+            }
+        ]
+    },
+    {
         "name": "filterType",
         "title": "Security Strength for the CRLFilter",
         "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
@@ -45,23 +69,6 @@
         "title": "Last update of filter",
         "description": "Last update time of the filter on the server, read-only",
         "type": "string"
-    },
-    {
-        "name": "hardFail",
-        "title": "Fail type",
-        "description": "Choose what the app must do when revocation check fails",
-        "type": "radio",
-        "value": 0,
-        "options": [
-            {
-                "value": 0,
-                "label": "Soft Fail"
-            },
-            {
-                "value": 1,
-                "label": "Hard Fail"
-            }
-        ]
     }],
     "serverurl": "http://localhost:3130/"
 }
