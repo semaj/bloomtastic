@@ -17,8 +17,8 @@ const self = require('sdk/self'),
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
-      log = console.error.bind(console);
-var contentReplace = ["An%20error%20occurred%20during%20a%20connection%20to%20",".%20Peer%27s%20Certificate%20has%20been%20revoked.%20(Error%20code%3A%20sec_error_revoked_certificate). Blocked by CRLFilter."];   
+      log = console.error.bind(console),
+      contentReplace = ["An%20error%20occurred%20during%20a%20connection%20to%20",".%20Peer%27s%20Certificate%20has%20been%20revoked.%20(Error%20code%3A%20sec_error_revoked_certificate).%20Blocked%20by%20CRLFilter."];   
 var enabled = true;
 var ADDON_ID = self.id;
 var JSONStore = require('./jsonstore');
@@ -85,16 +85,20 @@ var CRLFilter = {
                     let temp = JSON.parse(fields.filter);
                     temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
                     self_.filter = bloem.SafeBloem.destringify(temp);
-                    self_.filter.add('09:8D:04:63:44:BB:A0:FD:0D:21:6C:C4:13:83:56:7D');
-                    self_.lastUpdate = fields.date;
+                    self_.lastUpdate = new Date();
                     self_.type = fields.type;
+                    self_.filterid = fields.date;
                     preferences.lastUpdate = self_.lastUpdate;
                     preferences.type = self_.type;
-                    preferences.lastUpdate = fields.date;
                     if (store) {
-                        saveFilter(store);
+                        saveFilter(store,self_.filter,self_.type,self_.lastUpdate,self_.filterid);
+                        getExtraSerials(self_.filter); 
                     } else {
-                        new JSONStore(ADDON_ID,"filter",DEFAULT).then(saveFilter);
+                        new JSONStore(ADDON_ID,"filter",DEFAULT)
+                            .then(store => {
+                                saveFilter(store,self_.filter,self_.type,self_.lastUpdate,self_.filterid);
+                                getExtraSerials(self_.filter); 
+                            });
                     }
                 } else if (fields.diff) {
                     if (!self_.filter) {
@@ -139,6 +143,7 @@ var CRLFilter = {
                 this.filter = store.data.filter;
                 this.lastUpdate = store.data.lastUpdate;
                 this.type = store.data.type;
+                this.filterid = store.data.filterid;
                 preferences.lastUpdate = this.lastUpdate;
                 preferences.type = this.type;
             });
@@ -254,7 +259,8 @@ var ProgressListener = {
     },
 
     onSecurityChange: function(aWebProgress, aRequest, aState) {
-        log("Here at what's most important");
+        log("onSecurityChange");
+        try {
         log(aRequest.name);
         let state = aState;
         let filter = CRLFilter.filter;
@@ -265,7 +271,6 @@ var ProgressListener = {
             if (state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL) {
                 log('EV');
             }
-            log("here here here!!!!!!");
             log(aWebProgress.securityUI instanceof Ci.nsISecureBrowserUI);
             let secUI = aWebProgress.securityUI;
             secUI.QueryInterface(Ci.nsISSLStatusProvider);
@@ -307,6 +312,11 @@ var ProgressListener = {
             log('InSecure');
         } else if ((state & Ci.nsIWebProgressListener.STATE_IS_BROKEN)) {
             log('Broken');
+        }
+        } catch(err) {
+            log('ERROR:' + err);    
+        } finally {
+            log('Done:onSecurityChange');    
         }
    }
 };
@@ -375,6 +385,10 @@ simple_prefs.on("enabled", function() {
     }    
 });
 
+simple_prefs.on("updateFilter",function() {
+    getExtraSerials(CRLFilter.filter);    
+});
+
 function isCertValid(cert) {
     let usecs = new Date().getTime();
     return (usecs > cert.validity.notBefore / 1000 &&
@@ -409,11 +423,12 @@ function sendFilterRequest(parms,callback) {
     }).get();
 }
 
-function saveFilter(store) {
+function saveFilter(store,filter,type,lastUpdate,id) {
     try {
-        store.data.filter = CRLFilter.filter;
-        store.data.lastUpdate = CRLFilter.lastUpdate;
-        store.data.type = CRLFilter.type;
+        store.data.filter = filter;
+        store.data.lastUpdate = lastUpdate;
+        store.data.type = type;
+        store.data.filterid = id;
         store.save();
         log('Filter saved');
     } catch(err) {
@@ -423,6 +438,15 @@ function saveFilter(store) {
 
 function changeIcon(checked) {
     return (checked) ? './CRLf_green.ico' : './CRLf_red.ico';
+}
+
+function getExtraSerials(filter) {
+    let serials = preferences.extraSerial;
+    if (serials && serials.length > 0) {
+        (serials.split(',')).forEach(function(serial) {
+            filter.add(serial);
+        });
+    }
 }
 
 module.exports = CRLFilterApp;

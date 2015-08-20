@@ -46,15 +46,23 @@
         "value": 1,
         "options": [{
             "value": 0,
-            "label": "Revoked EV certificates and top Alexa 100"
+            "label": "Includes revoked CA and EV certs"
         },
         {
             "value": 1,
-            "label": "Revoked certificates from Top Alexa 1000"
+            "label": "Includes above and certificates revoked due to key compromise"
         },
         {
             "value": 2,
-            "label": "Revoked certificates from Top Alexa 10000"
+            "label": "Includes above and revoked certificates from top 10000 alexa ranked sites"
+        },
+        {
+            "value": 3,
+            "label": "Includes above and revoked certificates from top 100000 alexa ranked sites"
+        },
+        {
+            "value": 4,
+            "label": "Includes all revoked certificates"
         }]
     },
     {
@@ -69,6 +77,18 @@
         "title": "Last update of filter",
         "description": "Last update time of the filter on the server, read-only",
         "type": "string"
+    },
+    {
+        "name": "extraSerial",
+        "title": "Add serial numbers to filter",
+        "description": "For self-test, add serial numbers to filters. Multiple serial numbers must be separated by commas.",
+        "type": "string"
+    }, {
+        "name": "updateFilter",
+        "title": "Update Filter",
+        "label": "Update filter",
+        "type": "control"
     }],
-    "serverurl": "http://localhost:3130/"
+    "serverurl": "http://localhost:3130/",
+    "prodserverurl": "http://45.55.214.171/"
 }
