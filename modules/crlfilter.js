@@ -17,12 +17,7 @@ const self = require('sdk/self'),
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
-      log = console.error.bind(console),
-      revokedErrorURL = function(url) {
-        return 'about:neterror?e=nssFailure2&u=' + encodeURIComponent(url) +
-          '&d=' +
-          encodeURIComponent("An error occurred during connection to " + url + ". Peer's certificate has been revoked. (Error code: sec_error_revoked_certificate). This error brought to you by the Bloomtastic add-on.");
-      };
+      log = console.error.bind(console);
 var ADDON_ID = self.id;
 var JSONStore = require('./jsonstore');
 var serverurl = require('../package.json').serverurl;
@@ -313,7 +308,7 @@ var ProgressListener = {
       } else if ((state & Ci.nsIWebProgressListener.STATE_IS_BROKEN)) {
         log('Broken');
       } else {
-        log("Filter is undefined, CRLFilter is disabled, or we are in a weird state.\n crlfilter.enabled: " + CRLFilter.isEnabled());
+        log("Filter is undefined, CRLFilter is disabled, or we are in a weird state.");
       }
     } catch(err) {
       log('ERROR:' + err);    
@@ -458,6 +453,18 @@ function getExtraSerials(filter) {
       filter.add(serial);
     });
   }
+}
+
+function revokedErrorURL(url) {
+  let location = 'about:neterror?e=nssFailure2&u=';
+  let e = encodeURIComponent;
+  location += e(url);
+  location += '&d='
+  location += e("An error occurred during your connection to " + url);
+  location += e(". Peer's certificate has been revoked. ");
+  location += e("Error code: sec_error_revoked_certificate.) ")
+  location += e("This error brought to you by the Bloomtastic add-on.")
+  return location;
 }
 
 module.exports = CRLFilterApp;
