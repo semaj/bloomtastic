@@ -290,7 +290,7 @@ var ProgressListener = {
               
               let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
               let url = aRequest.name;
-              let gBrowser = utils.getMostRecentBrowserWindow().gBrowser; 
+              let gBrowser = win.gBrowser;
               let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
               let browser = gBrowser.getBrowserForDocument(domWin.top.document);
               let abouturl = revokedErrorURL(url);
