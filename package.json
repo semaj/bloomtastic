@@ -1,94 +1,109 @@
 {
-    "title": "CRLFilter",
-    "name": "crlfilter",
-    "version": "0.0.1",
-    "description": "Certificate Revocation checking using bloom filters",
-    "main": "index.js",
-    "author": "Aditya Rao",
-    "engines": {
-        "firefox": ">=38.0a1",
-        "fennec": ">=38.0a1"
-    },
-    "license": "MIT",
-    "dependencies": {
-        "buffer": "*",
-        "bloem": "*"
-    },
-    "preferences": [{
-        "name": "enabled",
-        "title": "CRLFilter Enabled",
-        "description": "Choose to enable certification revocation check using CRLFilter",
-        "type": "bool",
-        "value": true
-    },
+  "title": "Bloomtastic",
+  "name": "bloomtastic",
+  "version": "0.0.1",
+  "description": "Certificate Revocation checking using bloom filters",
+  "main": "index.js",
+  "author": "James Larisch, Aditya Rao",
+  "engines": {
+    "firefox": ">=38.0a1",
+    "fennec": ">=38.0a1"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "buffer": "*",
+    "bloom-filter": "*"
+  },
+  "preferences": [
     {
-        "name": "hardFail",
-        "title": "Fail type",
-        "description": "Choose what the app must do when revocation check fails",
-        "type": "radio",
-        "value": 0,
-        "options": [
-            {
-                "value": 0,
-                "label": "Soft Fail"
-            },
-            {
-                "value": 1,
-                "label": "Hard Fail"
-            }
-        ]
-    },
-    {
-        "name": "filterType",
-        "title": "Security Strength for the CRLFilter",
-        "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
-        "type": "menulist",
-        "value": 1,
-        "options": [{
-            "value": 0,
-            "label": "Includes revoked CA and EV certs"
+      "name": "hardFail",
+      "title": "Fail type",
+      "description": "Choose what the app must do when revocation check fails",
+      "type": "radio",
+      "value": 0,
+      "options": [
+        {
+          "value": 0,
+          "label": "Soft Fail"
         },
         {
-            "value": 1,
-            "label": "Includes above and certificates revoked due to key compromise"
-        },
-        {
-            "value": 2,
-            "label": "Includes above and revoked certificates from top 10000 alexa ranked sites"
-        },
-        {
-            "value": 3,
-            "label": "Includes above and revoked certificates from top 100000 alexa ranked sites"
-        },
-        {
-            "value": 4,
-            "label": "Includes all revoked certificates"
-        }]
+          "value": 1,
+          "label": "Hard Fail"
+        }
+      ]
     },
     {
-        "name": "updateInterval",
-        "title": "Frequency of filter updates",
-        "description": "Update frequency for filter sync (number of days)",
-        "type": "integer",
-        "value": 1
+      "name": "filterType",
+      "title": "Security Strength for the CRLFilter",
+      "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
+      "type": "menulist",
+      "value": 1,
+      "options": [
+        {
+          "value": 0,
+          "label": "Includes revoked CA and EV certs"
+        },
+        {
+          "value": 1,
+          "label": "Includes above and certificates revoked due to key compromise"
+        },
+        {
+          "value": 2,
+          "label": "Includes above and revoked certificates from top 10000 alexa ranked sites"
+        },
+        {
+          "value": 3,
+          "label": "Includes above and revoked certificates from top 100000 alexa ranked sites"
+        },
+        {
+          "value": 4,
+          "label": "Includes all revoked certificates"
+        }
+      ]
     },
     {
-        "name": "lastUpdate",
-        "title": "Last update of filter",
-        "description": "Last update time of the filter on the server, read-only",
-        "type": "string"
+      "name": "updateInterval",
+      "title": "Frequency of filter updates",
+      "description": "Update frequency for filter sync (number of days)",
+      "type": "integer",
+      "value": 1
     },
     {
-        "name": "extraSerial",
-        "title": "Add serial numbers to filter",
-        "description": "For self-test, add serial numbers to filters. Multiple serial numbers must be separated by commas.",
-        "type": "string"
-    }, {
-        "name": "updateFilter",
-        "title": "Update Filter",
-        "label": "Update filter",
-        "type": "control"
-    }],
-    "serverurl": "http://localhost:3130/",
-    "prodserverurl": "http://45.55.214.171/"
+      "name": "lastUpdate",
+      "title": "Last update of filter",
+      "description": "Last update time of the filter on the server, read-only",
+      "type": "string"
+    },
+    {
+      "name": "extraSerial",
+      "title": "Add serial numbers to filter",
+      "description": "For self-test, add serial numbers to filters. Multiple serial numbers must be separated by commas.",
+      "type": "string"
+    },
+    {
+      "name": "updateFilter",
+      "title": "Update Filter",
+      "label": "Update filter",
+      "type": "control"
+    },
+    {
+      "name": "enabled",
+      "title": "Enabled",
+      "label": "Enable blocking websites based on filter revocation.",
+      "type": "radio",
+      "value": true,
+      "options": [
+        {
+          "value": true,
+          "label": "Enabled"
+        },
+        {
+          "value": false,
+          "label": "Disabled"
+        }
+      ]
+    }
+  ],
+  "serverurl": "http://localhost:3130/",
+  "prodserverurl": "http://45.55.214.171/"
 }
