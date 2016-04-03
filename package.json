@@ -16,48 +16,23 @@
   },
   "preferences": [
     {
-      "name": "hardFail",
-      "title": "Fail type",
-      "description": "Choose what the app must do when revocation check fails",
-      "type": "radio",
-      "value": 0,
-      "options": [
-        {
-          "value": 0,
-          "label": "Soft Fail"
-        },
-        {
-          "value": 1,
-          "label": "Hard Fail"
-        }
-      ]
-    },
-    {
-      "name": "filterType",
-      "title": "Security Strength for the CRLFilter",
-      "description": "Indicator of the level of security required that determines the type of the CRLFilter used",
+      "name": "filterSize",
+      "title": "How secure would you like to be?",
+      "description": "You can specify the minimum global rank of the websites you'd like to filter. If you choose a higher rank this extension will store more data, but will be more secure.",
       "type": "menulist",
-      "value": 1,
+      "value": "medium",
       "options": [
         {
-          "value": 0,
-          "label": "Includes revoked CA and EV certs"
+          "value": "small",
+          "label": "Check only the 1000 most popular websites (small)"
         },
         {
-          "value": 1,
-          "label": "Includes above and certificates revoked due to key compromise"
+          "value": "medium",
+          "label": "Check only the 100000 most popular websites (medium)"
         },
         {
-          "value": 2,
-          "label": "Includes above and revoked certificates from top 10000 alexa ranked sites"
-        },
-        {
-          "value": 3,
-          "label": "Includes above and revoked certificates from top 100000 alexa ranked sites"
-        },
-        {
-          "value": 4,
-          "label": "Includes all revoked certificates"
+          "value": "large",
+          "label": "Check only the 100000000 most popular websites (large)"
         }
       ]
     },

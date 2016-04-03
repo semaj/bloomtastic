@@ -19,16 +19,14 @@ const ADDON_ID = self.id,
       JSONStore = require('./jsonstore'),
       DEFAULT = {},
       SERVER_URL = 'http://localhost:8080',
-      TODAYS_FILTER = '/todays-filter/',
-      MAX_RANK = 100000;
+      TODAYS_FILTER = '/todays-filter/';
+      
 
 // Main logic handling of filters and revocation checking
 var CRLFilter = {
   filter : undefined,
   lastUpdate: undefined,
-  enabled: undefined,
   filterID: undefined,
-  maxRank: MAX_RANK, //undefined;
   
   getStore: function(callback) {
     return new JSONStore(ADDON_ID, 'filter', DEFAULT).then(callback);
@@ -61,11 +59,11 @@ var CRLFilter = {
   },
 
   syncFilter : function(callback = ()=>{}) {
-    let self = this;
+    let that = this;
     Request({
-      url: SERVER_URL + TODAYS_FILTER + this.maxRank,
+      url: SERVER_URL + TODAYS_FILTER + preferences.filterSize,
       onComplete: (response) => {
-        if (response.status >= 300) {
+        if (response.status == 0 || response.status >= 300) {
           log("Filter sync error: " + response.text);
         } else {
           let body = response.json;
@@ -89,31 +87,10 @@ var CRLFilter = {
   updateFilter: function() {},
   
   checkSerial: function(cert) {
-    //TODO Possible fix for CA issuer name
-    // Return values: 0 if not revoked
-    //                1 if undetermined
-    //                2 if revoked
     let serial = cert.serialNumber;
     let r = this.filter.contains(serial);
     log("is " + serial + " there? " + r);
     return r;
-    //let ca_issuer;
-  //  return  (!isCertValid(cert)) ? 2 : 
-    //  ((this.filter !== undefined) && 
-      // this.filter.has(serial) && 
-     //  this.checkSerialServer(serial,ca_issuer)) || 0;
-  },
-  
-  checkSerialServer: function(serial,ca_issuer) {
-    // TODO Should check with server on certificate revocation,
-    // now returns 1 for to decide on hard fail check
-    // should return 2 if certificate is indeed revoked
-    log(preferences.hardFail);
-    return 1;
-  },
-  
-  filterInitialized: function() {
-    return this.filter !== undefined;
   },
   
   isEnabled: function() {
@@ -194,15 +171,13 @@ var ProgressListener = {
   
   onSecurityChange: function(aWebProgress, aRequest, aState) {
     log("onSecurityChange");
-    
     try {
       log(aRequest.name);
       let state = aState;
       let filter = CRLFilter.filter;
       if (CRLFilter.isEnabled() &&
-          (state & Ci.nsIWebProgressListener.STATE_IS_SECURE)// && 
-          // filter
-         ) {
+          (state & Ci.nsIWebProgressListener.STATE_IS_SECURE) && 
+          CRLFilter.filter) {
         log('Secure');
         if (state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL) {
           log('EV');
@@ -237,11 +212,10 @@ var ProgressListener = {
               let abouturl = revokedErrorURL(url);
               log(abouturl);
               browser.loadURIWithFlags(abouturl, 2048);
-              //log(browser);
-              log('Done stopping');
+              log('Done forbidding.');
             } 
           } catch(e) {
-            log(e);    
+            log("Cert checking exception: " + e);    
           }
         }
       } else if ((state & Ci.nsIWebProgressListener.STATE_IS_INSECURE)) {
@@ -302,20 +276,16 @@ var toggleButton = ui.ToggleButton({
 //var messagePanel = panel
 
 // Updating the filter when the filter type has changed
-simple_prefs.on("filterType", function () {
-  //TODO Some problem while changing filter type
+simple_prefs.on("filterSize", function () {
   log('Changing filter type');
-  try {
-    CRLFilter.type = preferences.filterType;
-    CRLFilter.syncFilter();
-  } catch (err) {
-    log(err);
-  }
+  CRLFilter.filterSize = preferences.filterSize;
+  CRLFilter.syncFilter(() => {
+    CRLFilter.insertExtraSerials();
+  });
 });
 
 simple_prefs.on("enabled", function() {
   try {
-    CRLFilter.enabled = preferences.enabled;
     toggleButton.checked = preferences.enabled;
     toggleButton.icon = changeIcon(preferences.enabled);
   } catch (err) {
@@ -355,17 +325,21 @@ function changeIcon(checked) {
   return (checked) ? './CRLf_green.ico' : './CRLf_red.ico';
 }
 
-function getExtraSerials(filter) {
-  let serials = preferences.extraSerial;
-  if (serials && serials.length > 0) {
-    (serials.split(',')).forEach(function(serial) {
-      filter.insert(serial);
-    });
+
+
+function getFilterSize() {
+  let filterSizeName = preferences.filterSize;
+  if (filterSizeName === "small") {
+    return 1000;
+  } else if (filterSizeName === "medium") {
+    return 100000;
+  } else {
+    return 100000000;
   }
 }
 
 function getFilter(filterData) {
-  let b = bloom.create(MAX_RANK, 0.01);
+  let b = bloom.create(getFilterSize(), 0.01);
   b.vData = filterData;
   return b;
 }
@@ -377,7 +351,7 @@ function revokedErrorURL(url) {
   location += '&d='
   location += e("An error occurred during your connection to " + url);
   location += e(". Peer's certificate has been revoked. ");
-  location += e("Error code: sec_error_revoked_certificate.) ")
+  location += e("(Error code: sec_error_revoked_certificate) ")
   location += e("This error brought to you by the Bloomtastic add-on.")
   return location;
 }
