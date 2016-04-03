@@ -6,24 +6,21 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
 Cu.import("resource://gre/modules/Services.jsm");
 
 const self = require('sdk/self'),
-      utils = require('sdk/window/utils'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
       bloom = require('bloom-filter'),
       tabs = require('sdk/tabs'),
       ui = require('sdk/ui'),
-      panel = require('sdk/panel'),
-      //Buffer = require('sdk/io/buffer').Buffer,
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
       log = console.error.bind(console);
-var ADDON_ID = self.id;
-var JSONStore = require('./jsonstore');
-var serverurl = require('../package.json').serverurl;
-const DEFAULT = {};
-const SERVER_URL = 'http://localhost:8080';
-const TODAYS_FILTER = '/todays-filter/';
+const ADDON_ID = self.id,
+      JSONStore = require('./jsonstore'),
+      DEFAULT = {},
+      SERVER_URL = 'http://localhost:8080',
+      TODAYS_FILTER = '/todays-filter/',
+      MAX_RANK = 100000;
 
 // Main logic handling of filters and revocation checking
 var CRLFilter = {
@@ -31,7 +28,7 @@ var CRLFilter = {
   lastUpdate: undefined,
   enabled: undefined,
   filterID: undefined,
-  maxRank: 1000, //undefined;
+  maxRank: MAX_RANK, //undefined;
   
   getStore: function(callback) {
     return new JSONStore(ADDON_ID, 'filter', DEFAULT).then(callback);
@@ -47,11 +44,11 @@ var CRLFilter = {
       self.lastUpdate = store.data.lastUpdate;
       self.filterID = store.data.filterID;
       //self.maxRank = store.maxRank;
-      self.enabled = store.data.enabled;
+      //self.enabled = store.data.enabled;
       //if (self.filter === undefined) {
         // so... we have no filter stored. get a fresh one.
         self.syncFilter((store) => {
-          console.log("FILTER " + JSON.stringify(self.filter));
+          log("FILTER " + JSON.stringify(self.filter));
         });
       //}
     });
@@ -69,10 +66,7 @@ var CRLFilter = {
       url: SERVER_URL + TODAYS_FILTER + this.maxRank,
       onComplete: (response) => {
         if (response.status >= 300) {
-          console.log("Filter sync error: " + response.text);
-        } else if (response.json.filter_id == self.filterID)  {
-          // this won't exist when we update filters correctly
-          console.log("We have an up-to-date filter: " + self.filterID);
+          log("Filter sync error: " + response.text);
         } else {
           let body = response.json;
           let data = {};
@@ -84,6 +78,7 @@ var CRLFilter = {
           data.enabled = self.enabled;
           self.getStore((store) => {
             store.data = data;
+            store.save();
             callback(store);
           });
         }
@@ -99,11 +94,14 @@ var CRLFilter = {
     //                1 if undetermined
     //                2 if revoked
     let serial = cert.serialNumber;
-    let ca_issuer;
-    return  (!isCertValid(cert)) ? 2 : 
-      ((this.filter !== undefined) && 
-       this.filter.has(serial) && 
-       this.checkSerialServer(serial,ca_issuer)) || 0;
+    let r = this.filter.contains(serial);
+    log("is " + serial + " there? " + r);
+    return r;
+    //let ca_issuer;
+  //  return  (!isCertValid(cert)) ? 2 : 
+    //  ((this.filter !== undefined) && 
+      // this.filter.has(serial) && 
+     //  this.checkSerialServer(serial,ca_issuer)) || 0;
   },
   
   checkSerialServer: function(serial,ca_issuer) {
@@ -116,17 +114,6 @@ var CRLFilter = {
   
   filterInitialized: function() {
     return this.filter !== undefined;
-  },
-  
-  flipEnabled: function(checked) {
-    if (checked) {
-      this.enabled = true;    
-      if (!this.filter) {
-        this.getFilter();    
-      } 
-    } else {
-      this.enabled = false;    
-    } 
   },
   
   isEnabled: function() {
@@ -232,8 +219,9 @@ var ProgressListener = {
             //TODO Currently it simply stops at filter, need to 
             // send request to server for check
             let revokeCheck = 2; //CRLFilter.checkSerial(cert);
-            if (revokeCheck > 0) {
+            if (CRLFilter.checkSerial(cert)) {
               log('********** Possibly Not Secure!');
+              //if (revokeCheck === 1 && preferences.hardFail === 0) {
               if (revokeCheck === 1 && preferences.hardFail === 0) {
                 // TODO Send message to user regarding this event
                 log('Allowed due to soft fail');
@@ -327,7 +315,7 @@ simple_prefs.on("filterType", function () {
 
 simple_prefs.on("enabled", function() {
   try {
-    CRLFilter.flipEnabled(preferences.enabled);
+    CRLFilter.enabled = preferences.enabled;
     toggleButton.checked = preferences.enabled;
     toggleButton.icon = changeIcon(preferences.enabled);
   } catch (err) {
@@ -363,38 +351,6 @@ function forEachOpenWindow(todo) {
   }
 }
 
-function sendFilterRequest(parms,callback) {
-  //TODO Need to fix the url ending &
-  let url = serverurl + 'filter';
-  if (parms) {
-    log(parms);
-    url += '?';
-    for (let parm in parms) {
-      url += (parm + '=' + parms[parm] + '&');
-    }
-    url.slice(0,url.length-1);
-  }
-  console.log(url);
-  Request({
-    url: url,
-    contentType: 'application/json',
-    onComplete: callback
-  }).get();
-}
-
-function saveFilter(store,filter,type,lastUpdate,id) {
-  try {
-    store.data.filter = filter;
-    store.data.lastUpdate = lastUpdate;
-    store.data.type = type;
-    store.data.filterid = id;
-    store.save();
-    log('Filter saved');
-  } catch(err) {
-    log(err);
-  }
-}
-
 function changeIcon(checked) {
   return (checked) ? './CRLf_green.ico' : './CRLf_red.ico';
 }
@@ -403,13 +359,13 @@ function getExtraSerials(filter) {
   let serials = preferences.extraSerial;
   if (serials && serials.length > 0) {
     (serials.split(',')).forEach(function(serial) {
-      filter.add(serial);
+      filter.insert(serial);
     });
   }
 }
 
 function getFilter(filterData) {
-  let b = bloom.create(1000, 0.01);
+  let b = bloom.create(MAX_RANK, 0.01);
   b.vData = filterData;
   return b;
 }
