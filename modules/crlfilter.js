@@ -97,6 +97,10 @@ var CRLFilter = {
             store.data.filterID = that.filterID;
             store.data.filterData = body.filter_data;
             store.save();
+            if (preferences.extraSerials !== undefined &&
+                preferences.extraSerials.length > 0) {
+              that.insertExtraSerials();
+            }
             callback(store);
           });
         }
@@ -140,7 +144,6 @@ var CRLFilterApp = {
     forEachOpenWindow(CRLFilterApp.initWindow);
     Services.wm.addListener(WindowListener);
     
-    // Initiate filter if not already have done so
     CRLFilter.init();
   },
   
@@ -193,17 +196,13 @@ var ProgressListener = {
   
   onStatusChange: function(aWebProgress, aRequest, aStatus, aMessage) { 
     log("status changed with status " + aStatus + " and message: " + aMessage);
-    /*
-      let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
-      let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
-      let browser = gBrowser.getBrowserForDocument(domWin.top.document);
-    */
   },
   
   onSecurityChange: function(aWebProgress, aRequest, aState) {
     log("onSecurityChange");
     try {
       log(aRequest.name);
+      log("web progress " + aWebProgress);
       let state = aState;
       let filter = CRLFilter.filter;
       if (CRLFilter.isEnabled() &&
@@ -239,6 +238,8 @@ var ProgressListener = {
           } catch(e) {
             log("Cert checking exception: " + e);    
           }
+        } else {
+          log("no secUI SSLStatus");
         }
       } else if ((state & Ci.nsIWebProgressListener.STATE_IS_INSECURE)) {
         log('InSecure');
@@ -250,7 +251,7 @@ var ProgressListener = {
     } catch(err) {
       log('ERROR:' + err);    
     } finally {
-      log('Done:onSecurityChange');    
+      log('Done:onSecurityChange');
     }
   }
 };
@@ -300,9 +301,7 @@ var toggleButton = ui.ToggleButton({
 simple_prefs.on("filterSize", function () {
   log('Changing filter type');
   CRLFilter.filterSize = preferences.filterSize;
-  CRLFilter.syncFilter(() => {
-    CRLFilter.insertExtraSerials();
-  });
+  CRLFilter.syncFilter();
 });
 
 simple_prefs.on("enabled", function() {
@@ -315,7 +314,10 @@ simple_prefs.on("enabled", function() {
 });
 
 simple_prefs.on("updateFilter",function() {
-  CRLFilter.insertExtraSerials();    
+  if (preferences.extraSerials !== undefined &&
+      preferences.extraSerials.length > 0) {
+    CRLFilter.insertExtraSerials();    
+  }
 });
 
 simple_prefs.on("freshFilter", function() {
