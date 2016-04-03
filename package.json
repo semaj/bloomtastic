@@ -37,20 +37,7 @@
       ]
     },
     {
-      "name": "updateInterval",
-      "title": "Frequency of filter updates",
-      "description": "Update frequency for filter sync (number of days)",
-      "type": "integer",
-      "value": 1
-    },
-    {
-      "name": "lastUpdate",
-      "title": "Last update of filter",
-      "description": "Last update time of the filter on the server, read-only",
-      "type": "string"
-    },
-    {
-      "name": "extraSerial",
+      "name": "extraSerials",
       "title": "Add serial numbers to filter",
       "description": "For self-test, add serial numbers to filters. Multiple serial numbers must be separated by commas.",
       "type": "string"
@@ -62,23 +49,24 @@
       "type": "control"
     },
     {
+      "name": "freshFilter",
+      "title": "Download fresh filter (clears extra serials)",
+      "label": "Clear & Download",
+      "type": "control"
+    },
+    {
       "name": "enabled",
       "title": "Enabled",
       "label": "Enable blocking websites based on filter revocation.",
-      "type": "radio",
-      "value": true,
-      "options": [
-        {
-          "value": true,
-          "label": "Enabled"
-        },
-        {
-          "value": false,
-          "label": "Disabled"
-        }
-      ]
+      "type": "bool",
+      "value": true
+    },
+    {
+      "name": "debug",
+      "title": "Debug",
+      "label": "Don't enable this unless you know what you're doing.",
+      "type": "bool",
+      "value": false
     }
-  ],
-  "serverurl": "http://localhost:3130/",
-  "prodserverurl": "http://45.55.214.171/"
+  ]
 }

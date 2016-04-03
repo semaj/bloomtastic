@@ -36,26 +36,45 @@ var CRLFilter = {
     // Initiate filter if not already done
     // Load it from data folder, else sync with server
     this.enabled = preferences.enabled;
-    let self = this;
+    let that = this;
     this.getStore((store) => {
-      self.filter = getFilter(store.data.filterData);
-      self.lastUpdate = store.data.lastUpdate;
-      self.filterID = store.data.filterID;
-      //self.maxRank = store.maxRank;
-      //self.enabled = store.data.enabled;
-      //if (self.filter === undefined) {
-        // so... we have no filter stored. get a fresh one.
-        self.syncFilter((store) => {
-          log("FILTER " + JSON.stringify(self.filter));
+      log("initializing with store: " + JSON.stringify(store.data));
+      that.filter = getFilter(store.data.filterData);
+      that.lastUpdate = store.data.lastUpdate;
+      that.filterID = store.data.filterID;
+
+      if (store.data.debug !== undefined) {
+        preference.filterSize = store.data.filterSize;
+      }
+
+      if (store.data.extraSerials !== undefined) {
+        preferences.extraSerials = store.data.extraSerials;
+      }
+      
+      if (store.data.debug !== undefined) {
+        preferences.debug = store.data.debug;
+      }
+      
+      if (store.data.filterData === undefined || preferences.debug) {
+        log("we have no filter stored. get a fresh one");
+        that.syncFilter((store) => {
+          // log("FILTER " + JSON.stringify(that.filte));
         });
-      //}
+      } else {
+        log("we have a filter " + that.filter);
+      }
     });
   },
   
   uninit: function() {
-    // Remove the filter update daemon. To be done when the browser closes
-    // Useless maybe
-    //return this.updateInterval && clearInterval(this.updateInterval);
+    let that = this;
+    this.getStore((store) => {
+      store.data.filterSize = preferences.filterSize;
+      store.data.extraSerials = preferences.extraSerials;
+      store.data.debug = preferences.debug;
+      store.save();
+      log("uninit done");
+    });
   },
 
   syncFilter : function(callback = ()=>{}) {
@@ -68,14 +87,15 @@ var CRLFilter = {
         } else {
           let body = response.json;
           let data = {};
-          data.lastUpdate = self.lastUpdate = Date.now;
-          data.filterID = self.filterID = body.filter_id;
+          that.lastUpdate = Date.now;
+          that.filterID = body.filter_id;
           data.filterData = body.filter_data;
-          self.filter = getFilter(body.filter_data);
-          data.maxRank = self.maxRank;
-          data.enabled = self.enabled;
-          self.getStore((store) => {
-            store.data = data;
+          that.filter = getFilter(body.filter_data);
+          data.enabled = that.enabled;
+          that.getStore((store) => {
+            store.data.lastUpdate = that.lastUpdate;
+            store.data.filterID = that.filterID;
+            store.data.filterData = body.filter_data;
             store.save();
             callback(store);
           });
@@ -98,6 +118,17 @@ var CRLFilter = {
       throw "Enabled is undefined. This is (?) impossible.";
     }
     return this.enabled;
+  },
+
+  insertExtraSerials: function() {
+    let that = this;
+    let serials = preferences.extraSerials;
+    if (serials && serials.length > 0) {
+      (serials.split(',')).forEach(function(serial) {
+        log("inserting extra " + serial);
+        that.filter.insert(serial);
+      });
+    }
   }
 };
 
@@ -191,19 +222,10 @@ var ProgressListener = {
             log('Here!');
             log(serialNumber);
             
-            //TODO Currently it simply stops at filter, need to 
-            // send request to server for check
-            let revokeCheck = 2; //CRLFilter.checkSerial(cert);
+            // TODO Currently it simply stops at filter, need to 
+            // send request to server for check (via OCSP / CRL)
             if (CRLFilter.checkSerial(cert)) {
               log('********** Possibly Not Secure!');
-              //if (revokeCheck === 1 && preferences.hardFail === 0) {
-              if (revokeCheck === 1 && preferences.hardFail === 0) {
-                // TODO Send message to user regarding this event
-                log('Allowed due to soft fail');
-                return;
-              }
-              //aRequest.cancel(Cr.NS_ERROR_DOM_SECURITY_ERR);
-              
               let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
               let url = aRequest.name;
               let gBrowser = win.gBrowser;
@@ -267,7 +289,6 @@ var toggleButton = ui.ToggleButton({
   icon: changeIcon(preferences.enabled),
   checked: preferences.enabled,
   onChange: function(state) {
-    CRLFilter.enabled = state.checked;    
     preferences.enabled = state.checked;
     toggleButton.icon = changeIcon(state.checked);
   }
@@ -294,14 +315,13 @@ simple_prefs.on("enabled", function() {
 });
 
 simple_prefs.on("updateFilter",function() {
-  getExtraSerials(CRLFilter.filter);    
+  CRLFilter.insertExtraSerials();    
 });
 
-function isCertValid(cert) {
-  let usecs = new Date().getTime();
-  return (usecs > cert.validity.notBefore / 1000 &&
-          usecs < cert.validity.notAfter / 1000);
-}
+simple_prefs.on("freshFilter", function() {
+  preferences.extraSerials = "";
+  CRLFilter.syncFilter();
+});
 
 function getWinFromProgress(progress) {
   return progress.DOMWindow.QueryInterface(Ci.nsIInterfaceRequestor)
