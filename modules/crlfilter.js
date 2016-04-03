@@ -9,7 +9,7 @@ const self = require('sdk/self'),
       utils = require('sdk/window/utils'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
-      //bloem = require('bloem'),
+      bloom = require('bloom-filter'),
       tabs = require('sdk/tabs'),
       ui = require('sdk/ui'),
       panel = require('sdk/panel'),
@@ -21,21 +21,40 @@ const self = require('sdk/self'),
 var ADDON_ID = self.id;
 var JSONStore = require('./jsonstore');
 var serverurl = require('../package.json').serverurl;
-const DEFAULT = {'lastUpdate': undefined};
+const DEFAULT = {};
+const SERVER_URL = 'http://localhost:8080';
+const TODAYS_FILTER = '/todays-filter/';
 
 // Main logic handling of filters and revocation checking
 var CRLFilter = {
   filter : undefined,
   lastUpdate: undefined,
-  type: undefined,
   enabled: undefined,
-
+  filterID: undefined,
+  maxRank: 1000, //undefined;
+  
+  getStore: function(callback) {
+    return new JSONStore(ADDON_ID, 'filter', DEFAULT).then(callback);
+  },
+  
   init: function() {
     // Initiate filter if not already done
     // Load it from data folder, else sync with server
     this.enabled = preferences.enabled;
-    this.getFilter();
-    //this.updateInterval = this.updateInterval || setInterval(this.updateFilter,1000*60*60*2);
+    let self = this;
+    this.getStore((store) => {
+      self.filter = getFilter(store.data.filterData);
+      self.lastUpdate = store.data.lastUpdate;
+      self.filterID = store.data.filterID;
+      //self.maxRank = store.maxRank;
+      self.enabled = store.data.enabled;
+      //if (self.filter === undefined) {
+        // so... we have no filter stored. get a fresh one.
+        self.syncFilter((store) => {
+          console.log("FILTER " + JSON.stringify(self.filter));
+        });
+      //}
+    });
   },
   
   uninit: function() {
@@ -43,99 +62,33 @@ var CRLFilter = {
     // Useless maybe
     //return this.updateInterval && clearInterval(this.updateInterval);
   },
-  
-  syncFilter : function(store) {
-    return;
-    // Used to sync the filter with server
-    // Either on startup (when no filter cached)
-    // Or to update the filter
-    let self_ = this;
-    let parms = {};
-    log('Current filter type:' + this.type);
-    try {
-      if (this.lastUpdate) {
-        parms.date = this.lastUpdate;
-      }
-      if (this.type) {
-        parms.type = this.type;
-      }
-      log('Sending request to server');
-      return sendFilterRequest(parms,function(response) {
-        if (!response.text || response.text.length === 0) {
-          log('Unable to connect to server');
+
+  syncFilter : function(callback = ()=>{}) {
+    let self = this;
+    Request({
+      url: SERVER_URL + TODAYS_FILTER + this.maxRank,
+      onComplete: (response) => {
+        if (response.status >= 300) {
+          console.log("Filter sync error: " + response.text);
+        } else if (response.json.filter_id == self.filterID)  {
+          // this won't exist when we update filters correctly
+          console.log("We have an up-to-date filter: " + self.filterID);
+        } else {
+          let body = response.json;
+          let data = {};
+          data.lastUpdate = self.lastUpdate = Date.now;
+          data.filterID = self.filterID = body.filter_id;
+          data.filterData = body.filter_data;
+          self.filter = getFilter(body.filter_data);
+          data.maxRank = self.maxRank;
+          data.enabled = self.enabled;
+          self.getStore((store) => {
+            store.data = data;
+            callback(store);
+          });
         }
-        log('Parsing reponse');
-        let fields = JSON.parse(response.text);
-        if (fields.filter) {
-          //for (let i in fields.filter.filter) log(i);
-          //log(typeof(fields.filter.filter.bitfield));
-          let temp = JSON.parse(fields.filter);
-          temp.filter.bitfield.buffer = temp.filter.bitfield.buffer.data;
-          self_.filter = bloem.SafeBloem.destringify(temp);
-          self_.lastUpdate = new Date();
-          self_.type = fields.type;
-          self_.filterid = fields.date;
-          preferences.lastUpdate = self_.lastUpdate;
-          preferences.type = self_.type;
-          if (store) {
-            saveFilter(store,self_.filter,self_.type,self_.lastUpdate,self_.filterid);
-            getExtraSerials(self_.filter); 
-          } else {
-            new JSONStore(ADDON_ID,"filter",DEFAULT)
-              .then(store => {
-                saveFilter(store,self_.filter,self_.type,self_.lastUpdate,self_.filterid);
-                getExtraSerials(self_.filter); 
-              });
-          }
-        } else if (fields.diff) {
-          if (!self_.filter) {
-            //TODO Possibility of infinite loop
-            self_.lastUpdate = undefined;
-            return self_.syncFilter();
-          }
-          
-          //TODO Need to read and change current filter
-          //     Not properly done yet, especially for inner
-          //     properties
-          for (let prop in fields.diff) {
-            if (prop !== 'buffer') {
-              self_.filter[prop] = fields.diff[prop];    
-            }
-          }
-          
-          let buffer = self_.filter.filter.bitfield.buffer;
-          if ('buffer' in fields.diff) {
-            for (let i in fields.diff.buffer) {
-              buffer[parseInt(i)] = fields.diff.buffer[i];
-            }    
-          }
-          
-          self_.lastUpdated = fields.lastUpdated;
-          self_.type = fields.type;
-        }
-      });
-    } catch(err) {
-      log(err);
-    }
-    
-  },
-  
-  getFilter: function() {
-    if (!this.filter) {
-      //First check if the filter exists in the data directory
-      new JSONStore(ADDON_ID,'filter',DEFAULT).then(store => {
-        if (!store.data.filter) {
-          return this.syncFilter(store);    
-        }    
-        this.filter = store.data.filter;
-        this.lastUpdate = store.data.lastUpdate;
-        this.type = store.data.type;
-        this.filterid = store.data.filterid;
-        preferences.lastUpdate = this.lastUpdate;
-        preferences.type = this.type;
-      });
-    }    
-    return this.filter;
+      }
+    }).get();
   },
   
   updateFilter: function() {},
@@ -453,6 +406,12 @@ function getExtraSerials(filter) {
       filter.add(serial);
     });
   }
+}
+
+function getFilter(filterData) {
+  let b = bloom.create(1000, 0.01);
+  b.vData = filterData;
+  return b;
 }
 
 function revokedErrorURL(url) {
