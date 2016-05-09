@@ -37,9 +37,9 @@
       ]
     },
     {
-      "name": "extraSerials",
-      "title": "Add serial numbers to filter",
-      "description": "For self-test, add serial numbers to filters. Multiple serial numbers must be separated by commas.",
+      "name": "extraIdentifiers",
+      "title": "Add identifiers numbers to filter",
+      "description": "For self-test, add identifiers to filters. Multiple identifiers must be separated by commas.",
       "type": "string"
     },
     {

@@ -9,6 +9,7 @@ const self = require('sdk/self'),
       simple_prefs = require('sdk/simple-prefs'),
       Request = require('sdk/request').Request,
       bloom = require('bloom-filter'),
+      sha1 = require('sha1'),
       tabs = require('sdk/tabs'),
       ui = require('sdk/ui'),
       preferences = simple_prefs.prefs,
@@ -18,7 +19,7 @@ const self = require('sdk/self'),
 const ADDON_ID = self.id,
       JSONStore = require('./jsonstore'),
       DEFAULT = {},
-      SERVER_URL = 'http://localhost:8080',
+      SERVER_URL = 'http://revocations.ccs.neu.edu',
       TODAYS_FILTER = '/todays-filter/';
       
 
@@ -47,8 +48,8 @@ var CRLFilter = {
         preference.filterSize = store.data.filterSize;
       }
 
-      if (store.data.extraSerials !== undefined) {
-        preferences.extraSerials = store.data.extraSerials;
+      if (store.data.extraIdentifiers !== undefined) {
+        preferences.extraIdentifiers = store.data.extraIdentifiers;
       }
       
       if (store.data.debug !== undefined) {
@@ -70,7 +71,7 @@ var CRLFilter = {
     let that = this;
     this.getStore((store) => {
       store.data.filterSize = preferences.filterSize;
-      store.data.extraSerials = preferences.extraSerials;
+      store.data.extraIdentifiers = preferences.extraIdentifiers;
       store.data.debug = preferences.debug;
       store.save();
       log("uninit done");
@@ -97,9 +98,9 @@ var CRLFilter = {
             store.data.filterID = that.filterID;
             store.data.filterData = body.filter_data;
             store.save();
-            if (preferences.extraSerials !== undefined &&
-                preferences.extraSerials.length > 0) {
-              that.insertExtraSerials();
+            if (preferences.extraIdentifiers !== undefined &&
+                preferences.extraIdentifiers.length > 0) {
+              that.insertExtraIdentifiers();
             }
             callback(store);
           });
@@ -110,10 +111,9 @@ var CRLFilter = {
   
   updateFilter: function() {},
   
-  checkSerial: function(cert) {
-    let serial = cert.serialNumber;
-    let r = this.filter.contains(serial);
-    log("is " + serial + " there? " + r);
+  checkIdentifier: function(identifier) {
+    let r = this.filter.contains(identifier);
+    log("is " + identifier + " there? " + r);
     return r;
   },
   
@@ -124,13 +124,13 @@ var CRLFilter = {
     return this.enabled;
   },
 
-  insertExtraSerials: function() {
+  insertExtraIdentifiers: function() {
     let that = this;
-    let serials = preferences.extraSerials;
-    if (serials && serials.length > 0) {
-      (serials.split(',')).forEach(function(serial) {
-        log("inserting extra " + serial);
-        that.filter.insert(serial);
+    let identifiers = preferences.extraIdentifiers;
+    if (identifiers && identifiers.length > 0) {
+      (identifiers.split(',')).forEach(function(identifier) {
+        log("inserting extra " + identifier);
+        that.filter.insert(identifier);
       });
     }
   }
@@ -214,27 +214,64 @@ var ProgressListener = {
         }
         let win = getWinFromProgress(aWebProgress);
         let secUI = win.gBrowser.securityUI;
-        if (secUI.SSLStatus) {
+        let status = secUI.SSLStatus;
+        if (status) {
           try {
-            let cert = secUI.SSLStatus.serverCert;
-            let serialNumber = cert.serialNumber;
-            log('Here!');
-            log(serialNumber);
-            
-            // TODO Currently it simply stops at filter, need to 
-            // send request to server for check (via OCSP / CRL)
-            if (CRLFilter.checkSerial(cert)) {
-              log('********** Possibly Not Secure!');
-              let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
-              let url = aRequest.name;
-              let gBrowser = win.gBrowser;
-              let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
-              let browser = gBrowser.getBrowserForDocument(domWin.top.document);
-              let abouturl = revokedErrorURL(url);
-              log(abouturl);
-              browser.loadURIWithFlags(abouturl, 2048);
-              log('Done forbidding.');
-            } 
+            let cert = status.serverCert;
+            let chain = cert.getChain();
+            for (var i = 0; i < chain.length; i++) {
+              let currCert = chain.queryElementAt(i, Ci.nsIX509Cert);
+              let serialNumber = currCert.serialNumber;
+              let asn1Tree = Cc["@mozilla.org/security/nsASN1Tree;1"].createInstance(Ci.nsIASN1Tree);
+              asn1Tree.loadASN1Structure(currCert.ASN1Structure);
+              let crlURL, ocspURL;
+              let j = 0;
+              while (true) {
+                try {
+                  var certLine = asn1Tree.getDisplayData(j);
+                } catch (err) {
+                  break;
+                }
+                let crlUrls = certLine.match(/http.*\.crl/g);
+                if (crlUrls && crlUrls.length > 0) {
+                  crlURL = crlUrls.sort()[0];
+                  log("CRL");
+                  log(crlURL);
+                  break;
+                }
+                let ocsp = certLine.match(/OCSP: URI: (http.*)\n/)
+                if (ocsp) {
+                  ocspURL = ocsp[1];
+                  log("OCSP");
+                  log(ocspURL);
+                }
+                j++;
+              }
+              let identifier;
+              if (crlURL) {
+                identifier = sha1(serialNumber + crlURL);
+              } else if (ocspURL) {
+                identifier = sha1(serialNumber + ocspURL);
+              } else {
+                log("We have no identifier! aborting");
+                break;
+              }
+              if (CRLFilter.checkIdentifier(identifier)) {
+                log('********** Possibly Not Secure!');
+                let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
+                let url = aRequest.name;
+                let gBrowser = win.gBrowser;
+                let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
+                let browser = gBrowser.getBrowserForDocument(domWin.top.document);
+                let abouturl = revokedErrorURL(url);
+                log(abouturl);
+                browser.loadURIWithFlags(abouturl, 2048);
+                log('Done forbidding.');
+                break;
+              }
+              // TODO Currently it simply stops at filter, need to 
+              // send request to server for check (via OCSP / CRL)
+            }
           } catch(e) {
             log("Cert checking exception: " + e);    
           }
@@ -314,14 +351,14 @@ simple_prefs.on("enabled", function() {
 });
 
 simple_prefs.on("updateFilter",function() {
-  if (preferences.extraSerials !== undefined &&
-      preferences.extraSerials.length > 0) {
-    CRLFilter.insertExtraSerials();    
+  if (preferences.extraIdentifiers !== undefined &&
+      preferences.extraIdentifiers.length > 0) {
+    CRLFilter.insertExtraIdentifiers();    
   }
 });
 
 simple_prefs.on("freshFilter", function() {
-  preferences.extraSerials = "";
+  preferences.extraIdentifiers = "";
   CRLFilter.syncFilter();
 });
 
