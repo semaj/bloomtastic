@@ -170,7 +170,7 @@ var CRLFilterApp = {
 var ProgressListener = {
   QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
                                          "nsISupportsWeakReference"]),
-  
+
   onStateChange: function(aWebProgress, aRequest, aFlag, aStatus) {
     // If you use ProgressListener for more than one tab/window, use
     // aWebProgress.DOMWindow to obtain the tab/window which triggers the state change
@@ -249,9 +249,9 @@ var ProgressListener = {
               }
               let identifier;
               if (crlURL) {
-                identifier = sha1(serialNumber + crlURL);
+                identifier = sha1((sha1(crlURL + '\n') + serialNumber));
               } else if (ocspURL) {
-                identifier = sha1(serialNumber + ocspURL);
+                identifier = sha1((sha1(ocspURL + '\n') + serialNumber));
               } else {
                 log("We have no identifier! aborting");
                 break;
@@ -262,12 +262,21 @@ var ProgressListener = {
                 let url = aRequest.name;
                 let gBrowser = win.gBrowser;
                 let domWin = channel.notificationCallbacks.getInterface(Ci.nsIDOMWindow);
-                let browser = gBrowser.getBrowserForDocument(domWin.top.document);
-                let abouturl = revokedErrorURL(url);
-                log(abouturl);
-                browser.loadURIWithFlags(abouturl, 2048);
-                log('Done forbidding.');
-                break;
+                var browser = gBrowser.getBrowserForDocument(domWin.top.document);
+                var abouturl = revokedErrorURL(url);
+                isRevoked(identifier, (response) => {
+                  let body = response.json;
+                  log('Checking with server');
+                  if (preferences.debug || body['is-revoked'] === true)
+                  {
+                    log('it is indeed revoked');
+                    log(abouturl);
+                    browser.loadURIWithFlags(abouturl, 2048);
+                    log('Done forbidding.');
+                  } else {
+                    log('On second thought, it is not really revoked.');
+                  }
+                }); 
               }
               // TODO Currently it simply stops at filter, need to 
               // send request to server for check (via OCSP / CRL)
@@ -414,5 +423,13 @@ function revokedErrorURL(url) {
   location += e("This error brought to you by the Bloomtastic add-on.")
   return location;
 }
+
+function isRevoked(identifier, callback = ()=>{}) {
+  Request({
+    url: SERVER_URL + '/is-revoked/' + identifier,
+    onComplete: callback
+  }).get();
+}
+
 
 module.exports = CRLFilterApp;

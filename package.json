@@ -31,15 +31,15 @@
           "label": "Check only the 100000 most popular websites (medium)"
         },
         {
-          "value": "large",
-          "label": "Check only the 100000000 most popular websites (large)"
+          "value": "all",
+          "label": "Check ALL websites"
         }
       ]
     },
     {
       "name": "extraIdentifiers",
       "title": "Add identifiers numbers to filter",
-      "description": "For self-test, add identifiers to filters. Multiple identifiers must be separated by commas.",
+      "description": "For self-test, add identifiers to filters. Multiple identifiers must be separated by commas. (Update filter after doing this)",
       "type": "string"
     },
     {
