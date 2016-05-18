@@ -1,8 +1,8 @@
 {
-  "title": "Bloomtastic",
-  "name": "bloomtastic",
+  "title": "SSL Most Wanted",
+  "name": "ssl-most-wanted",
   "version": "0.0.1",
-  "description": "Certificate Revocation checking using bloom filters",
+  "description": "A *complete* SSL certificate revocation list.",
   "main": "index.js",
   "author": "James Larisch, Aditya Rao",
   "engines": {
@@ -11,8 +11,9 @@
   },
   "license": "MIT",
   "dependencies": {
+    "bloom-filter": "^0.2.0",
     "buffer": "*",
-    "bloom-filter": "*"
+    "sha1": "^1.1.1"
   },
   "preferences": [
     {

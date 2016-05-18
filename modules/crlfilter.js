@@ -332,7 +332,7 @@ var WindowListener = {
 
 var toggleButton = ui.ToggleButton({
   id: 'mainButton',
-  label: 'CRLfilter',
+  label: 'SSL Most Wanted',
   icon: changeIcon(preferences.enabled),
   checked: preferences.enabled,
   onChange: function(state) {
@@ -420,7 +420,7 @@ function revokedErrorURL(url) {
   location += e("An error occurred during your connection to " + url);
   location += e(". Peer's certificate has been revoked. ");
   location += e("(Error code: sec_error_revoked_certificate) ")
-  location += e("This error brought to you by the Bloomtastic add-on.")
+  location += e("This error brought to you by the SSL Most Wanted add-on.")
   return location;
 }
 
