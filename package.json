@@ -1,7 +1,7 @@
 {
   "title": "SSL Most Wanted",
   "name": "ssl-most-wanted",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A *complete* SSL certificate revocation list.",
   "main": "index.js",
   "author": "James Larisch, Aditya Rao",
@@ -21,46 +21,27 @@
       "title": "How secure would you like to be?",
       "description": "You can specify the minimum global rank of the websites you'd like to filter. If you choose a higher rank this extension will store more data, but will be more secure.",
       "type": "menulist",
-      "value": "medium",
+      "value": "small",
       "options": [
         {
           "value": "small",
-          "label": "Check only the 1000 most popular websites (small)"
+          "label": "Check only 1,000 most popular sites (2 KB)"
         },
         {
           "value": "medium",
-          "label": "Check only the 100000 most popular websites (medium)"
+          "label": "Check only 100,000 most popular websites (200 KB)"
         },
         {
           "value": "all",
-          "label": "Check ALL websites"
+          "label": "Check ALL websites (20 MB)"
         }
       ]
     },
     {
-      "name": "extraIdentifiers",
-      "title": "Add identifiers numbers to filter",
-      "description": "For self-test, add identifiers to filters. Multiple identifiers must be separated by commas. (Update filter after doing this)",
-      "type": "string"
-    },
-    {
-      "name": "updateFilter",
-      "title": "Update Filter",
-      "label": "Update filter",
-      "type": "control"
-    },
-    {
       "name": "freshFilter",
-      "title": "Download fresh filter (clears extra serials)",
+      "title": "Download fresh filter",
       "label": "Clear & Download",
       "type": "control"
-    },
-    {
-      "name": "enabled",
-      "title": "Enabled",
-      "label": "Enable blocking websites based on filter revocation.",
-      "type": "bool",
-      "value": true
     },
     {
       "name": "debug",

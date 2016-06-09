@@ -10,17 +10,9 @@ Cu.import("resource://gre/modules/Services.jsm");
 var CRLFilterApp = require('./modules/crlfilter');
 
 exports.main = function() {
-    CRLFilterApp.extensionStartup();    
+    CRLFilterApp.extensionStartup();
 };
 
 exports.onUnload = function() {
-    CRLFilterApp.extensionShutdown();    
+    CRLFilterApp.extensionShutdown();
 };
-
-// a dummy function, to show how tests work.
-// to see how to test this function, look at test/test-index.js
-function dummy(text, callback) {
-  callback(text);
-}
-
-exports.dummy = dummy;

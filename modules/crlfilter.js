@@ -2,6 +2,8 @@
 
 const {Cc,Ci,Cu,Cr} = require("chrome");
 const {pathFor,platform} = require('sdk/system');
+const {XMLHttpRequest} = require("sdk/net/xhr");
+const { ActionButton } = require("sdk/ui/button/action");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
 Cu.import("resource://gre/modules/Services.jsm");
 
@@ -15,152 +17,171 @@ const self = require('sdk/self'),
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
       STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP,
-      log = console.error.bind(console);
+      error = console.error.bind(console),
+      info = console.log.bind(console);
 const ADDON_ID = self.id,
       JSONStore = require('./jsonstore'),
       DEFAULT = {},
       SERVER_URL = 'http://revocations.ccs.neu.edu',
-      TODAYS_FILTER = '/todays-filter/';
-      
+      TODAYS_FILTER = '/todays-filter/',
+      TODAYS_META = '/todays-meta/';
+
 
 // Main logic handling of filters and revocation checking
 var CRLFilter = {
   filter : undefined,
   lastUpdate: undefined,
   filterID: undefined,
-  
+  toBlacklist: undefined,
+  blacklist: [],
+
   getStore: function(callback) {
-    return new JSONStore(ADDON_ID, 'filter', DEFAULT).then(callback);
+    return new JSONStore(ADDON_ID, 'filter', DEFAULT).then(callback)
+      .catch(function(error) {
+        error(error.message);
+        error(error.stack);
+      });
   },
-  
+
   init: function() {
     // Initiate filter if not already done
     // Load it from data folder, else sync with server
-    this.enabled = preferences.enabled;
     let that = this;
     this.getStore((store) => {
-      log("initializing with store: " + JSON.stringify(store.data));
-      that.filter = getFilter(store.data.filterData);
+      info("initializing with store: " + JSON.stringify(store.data));
+      if (store.data.filterData !== undefined) {
+        that.filter = getFilter(store.data.filterData);
+      }
       that.lastUpdate = store.data.lastUpdate;
       that.filterID = store.data.filterID;
+      if (store.data.blacklist !== undefined) {
+        that.blacklist = store.data.blacklist;
+      }
 
-      if (store.data.debug !== undefined) {
+      if (store.data.filterSize !== undefined) {
         preference.filterSize = store.data.filterSize;
       }
 
-      if (store.data.extraIdentifiers !== undefined) {
-        preferences.extraIdentifiers = store.data.extraIdentifiers;
-      }
-      
       if (store.data.debug !== undefined) {
         preferences.debug = store.data.debug;
       }
-      
-      if (store.data.filterData === undefined || preferences.debug) {
-        log("we have no filter stored. get a fresh one");
+
+      if (store.data.filterData === undefined) {
+        info("we have no filter stored. get a fresh one");
         that.syncFilter((store) => {
-          // log("FILTER " + JSON.stringify(that.filte));
+          info("Done getting filter");
+        });
+        that.syncMeta((store) => {
+          info("Done getting meta");
         });
       } else {
-        log("we have a filter " + that.filter);
+        info("we have a filter. possibly updating.");
+        that.updateFilter();
       }
     });
   },
-  
+
   uninit: function() {
     let that = this;
     this.getStore((store) => {
+      store.data.blacklist = that.blacklist;
       store.data.filterSize = preferences.filterSize;
-      store.data.extraIdentifiers = preferences.extraIdentifiers;
       store.data.debug = preferences.debug;
       store.save();
-      log("uninit done");
+      info("uninit done");
     });
   },
 
-  syncFilter : function(callback = ()=>{}) {
+  syncMeta : function(callback = ()=>{}) {
     let that = this;
     Request({
-      url: SERVER_URL + TODAYS_FILTER + preferences.filterSize,
+      url: SERVER_URL + TODAYS_META + preferences.filterSize,
       onComplete: (response) => {
         if (response.status == 0 || response.status >= 300) {
-          log("Filter sync error: " + response.text);
+          error("Meta sync error: " + response.text);
         } else {
           let body = response.json;
-          let data = {};
           that.lastUpdate = Date.now;
-          that.filterID = body.filter_id;
-          data.filterData = body.filter_data;
-          that.filter = getFilter(body.filter_data);
-          data.enabled = that.enabled;
+          that.filterID = body.primary_id;
           that.getStore((store) => {
             store.data.lastUpdate = that.lastUpdate;
             store.data.filterID = that.filterID;
-            store.data.filterData = body.filter_data;
             store.save();
-            if (preferences.extraIdentifiers !== undefined &&
-                preferences.extraIdentifiers.length > 0) {
-              that.insertExtraIdentifiers();
-            }
             callback(store);
           });
         }
       }
     }).get();
   },
-  
-  updateFilter: function() {},
-  
-  checkIdentifier: function(identifier) {
-    let r = this.filter.contains(identifier);
-    log("is " + identifier + " there? " + r);
-    return r;
-  },
-  
-  isEnabled: function() {
-    if (this.enabled === undefined) {
-      throw "Enabled is undefined. This is (?) impossible.";
-    }
-    return this.enabled;
+
+  syncFilter : function(callback = ()=>{}) {
+    let that = this;
+    let oReq = new XMLHttpRequest();
+    oReq.open("GET", SERVER_URL + TODAYS_FILTER + preferences.filterSize, true);
+    oReq.responseType = 'arraybuffer';
+
+    oReq.onload = function (oEvent) {
+      let arrayBuffer = this.response; // Note: not oReq.responseText
+      if (arrayBuffer) {
+        let filterData = new Uint8Array(arrayBuffer);
+        that.filter = getFilter(filterData);
+        info("CHECKING SANITY");
+        info("sane?: " + !that.filter.contains("help"));
+        that.getStore((store) => {
+          store.data.filterData = filterData;
+          store.save();
+          callback(store);
+        });
+      } else {
+        error("GET filter error");
+      }
+    };
+    oReq.send(null);
   },
 
-  insertExtraIdentifiers: function() {
-    let that = this;
-    let identifiers = preferences.extraIdentifiers;
-    if (identifiers && identifiers.length > 0) {
-      (identifiers.split(',')).forEach(function(identifier) {
-        log("inserting extra " + identifier);
-        that.filter.insert(identifier);
-      });
-    }
-  }
+  updateFilter: function() {
+    let currentID = this.filterID;
+    syncMeta((store) => {
+      if (store.data.filterID > currentID) {
+        syncFilter((_) => {
+          info("Just updated the filter!");
+        });
+      }
+    });
+  },
+
+  checkIdentifier: function(identifier) {
+    let r = this.filter.contains(identifier);
+    info("is " + identifier + " there? " + r);
+    return r;
+  },
 };
 
 //Implement the app
 var CRLFilterApp = {
   prefs: null,
-  
+
   extensionStartup: function (firstRun, reinstall) {
     forEachOpenWindow(CRLFilterApp.initWindow);
     Services.wm.addListener(WindowListener);
-    
+
     CRLFilter.init();
   },
-  
+
   extensionShutdown: function () {
     forEachOpenWindow(CRLFilterApp.uninitWindow);
     Services.wm.removeListener(WindowListener);
-    
+
     CRLFilter.uninit();
   },
-  
+
   extensionUninstall: function () {},
-  
+
   initWindow : function (window) {
     // Add listeners to each browser window
     window.gBrowser.addProgressListener(ProgressListener);
   },
-  
+
   uninitWindow: function (window) {
     // Remove listeners to each browser window
     window.gBrowser.removeProgressListener(ProgressListener);
@@ -176,41 +197,45 @@ var ProgressListener = {
     // aWebProgress.DOMWindow to obtain the tab/window which triggers the state change
     if (aFlag & STATE_START) {
       // This fires when the load event is initiated
-      log("Here at start");
+      info("Here at start");
     }
     if (aFlag & STATE_STOP) {
       // This fires when the load finishes
-      log("Here at end");
+      info("Here at end");
     }
   },
-  
+
   onLocationChange: function(aProgress, aRequest, aURI) {
     // This fires when the location bar changes; that is load event is confirmed
     // or when the user switches tabs. If you use ProgressListener for more than one tab/window,
     // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
-    log("At location change");
+    info("At location change");
+    if (CRLFilter.blacklist.includes(aURI.host)) {
+      Button.icon = "./CRLf_red.ico";
+    }
+    info(aURI);
   },
-  
+
   // For definitions of the remaining functions see related documentation
-  onProgressChange: function(aWebProgress, aRequest, curSelf, maxSelf, curTot, maxTot) { log("progress changed");},
-  
-  onStatusChange: function(aWebProgress, aRequest, aStatus, aMessage) { 
-    log("status changed with status " + aStatus + " and message: " + aMessage);
+  onProgressChange: function(aWebProgress, aRequest, curSelf, maxSelf, curTot, maxTot) { info("progress changed");},
+
+  onStatusChange: function(aWebProgress, aRequest, aStatus, aMessage) {
+    info("status changed with status " + aStatus + " and message: " + aMessage);
   },
-  
+
   onSecurityChange: function(aWebProgress, aRequest, aState) {
-    log("onSecurityChange");
+    let that = this;
+    info("onSecurityChange");
     try {
-      log(aRequest.name);
-      log("web progress " + aWebProgress);
+      info(aRequest.URI.host);
+      info("web progress " + aWebProgress);
       let state = aState;
       let filter = CRLFilter.filter;
-      if (CRLFilter.isEnabled() &&
-          (state & Ci.nsIWebProgressListener.STATE_IS_SECURE) && 
+      if ((state & Ci.nsIWebProgressListener.STATE_IS_SECURE) &&
           CRLFilter.filter) {
-        log('Secure');
+        info('Secure');
         if (state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL) {
-          log('EV');
+          info('EV');
         }
         let win = getWinFromProgress(aWebProgress);
         let secUI = win.gBrowser.securityUI;
@@ -219,6 +244,7 @@ var ProgressListener = {
           try {
             let cert = status.serverCert;
             let chain = cert.getChain();
+            CRLFilter.toBlacklist = false;
             for (var i = 0; i < chain.length; i++) {
               let currCert = chain.queryElementAt(i, Ci.nsIX509Cert);
               let serialNumber = currCert.serialNumber;
@@ -235,15 +261,15 @@ var ProgressListener = {
                 let crlUrls = certLine.match(/http.*\.crl/g);
                 if (crlUrls && crlUrls.length > 0) {
                   crlURL = crlUrls.sort()[0];
-                  log("CRL");
-                  log(crlURL);
+                  info("CRL");
+                  info(crlURL);
                   break;
                 }
                 let ocsp = certLine.match(/OCSP: URI: (http.*)\n/)
                 if (ocsp) {
                   ocspURL = ocsp[1];
-                  log("OCSP");
-                  log(ocspURL);
+                  info("OCSP");
+                  info(ocspURL);
                 }
                 j++;
               }
@@ -253,11 +279,16 @@ var ProgressListener = {
               } else if (ocspURL) {
                 identifier = sha1((sha1(ocspURL + '\n') + serialNumber));
               } else {
-                log("We have no identifier! aborting");
+                error("We have no identifier! aborting");
                 break;
               }
+              if (!CRLFilter.toBlacklist) {
+                CRLFilter.toBlacklist = {};
+                CRLFilter.toBlacklist.id = identifier;
+                CRLFilter.toBlacklist.host = aRequest.URI.host;
+              }
               if (CRLFilter.checkIdentifier(identifier)) {
-                log('********** Possibly Not Secure!');
+                info('********** Possibly Not Secure!');
                 let channel = aRequest.QueryInterface(Ci.nsIHttpChannel);
                 let url = aRequest.name;
                 let gBrowser = win.gBrowser;
@@ -266,38 +297,36 @@ var ProgressListener = {
                 var abouturl = revokedErrorURL(url);
                 isRevoked(identifier, (response) => {
                   let body = response.json;
-                  log('Checking with server');
+                  info('Checking with server');
                   if (preferences.debug || body['is-revoked'] === true)
                   {
-                    log('it is indeed revoked');
-                    log(abouturl);
+                    info('it is indeed revoked');
+                    info(abouturl);
                     browser.loadURIWithFlags(abouturl, 2048);
-                    log('Done forbidding.');
+                    info('Done forbidding.');
                   } else {
-                    log('On second thought, it is not really revoked.');
+                    info('On second thought, it is not really revoked.');
                   }
-                }); 
+                });
               }
-              // TODO Currently it simply stops at filter, need to 
-              // send request to server for check (via OCSP / CRL)
             }
           } catch(e) {
-            log("Cert checking exception: " + e);    
+            error("Cert checking exception: " + e);
           }
         } else {
-          log("no secUI SSLStatus");
+          error("no secUI SSLStatus");
         }
       } else if ((state & Ci.nsIWebProgressListener.STATE_IS_INSECURE)) {
-        log('InSecure');
+        error('InSecure');
       } else if ((state & Ci.nsIWebProgressListener.STATE_IS_BROKEN)) {
-        log('Broken');
+        error('Broken');
       } else {
-        log("Filter is undefined, CRLFilter is disabled, or we are in a weird state.");
+        error("Filter is undefined, CRLFilter is disabled, or we are in a weird state.");
       }
     } catch(err) {
-      log('ERROR:' + err);    
+      error('ERROR: ' + err);
     } finally {
-      log('Done:onSecurityChange');
+      info('Done:onSecurityChange');
     }
   }
 };
@@ -307,7 +336,7 @@ var WindowListener = {
     let window = xulWindow
         .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
         .getInterface(Components.interfaces.nsIDOMWindow);
-    
+
     function onWindowLoad() {
       window.removeEventListener("load", onWindowLoad);
       if (window.document.documentElement
@@ -325,49 +354,34 @@ var WindowListener = {
         .getAttribute("windowtype") === "navigator:browser") {
       CRLFilterApp.initWindow(window);
     }
-    
+
   },
   onWindowTitleChange: function (xulWindow, newTitle) {}
 };
 
-var toggleButton = ui.ToggleButton({
-  id: 'mainButton',
-  label: 'SSL Most Wanted',
-  icon: changeIcon(preferences.enabled),
-  checked: preferences.enabled,
-  onChange: function(state) {
-    preferences.enabled = state.checked;
-    toggleButton.icon = changeIcon(state.checked);
+const Button = ActionButton({
+  id: "blacklist",
+  label: "SSL Most Wanted: Blacklist",
+  icon: './CRLf_green.ico',
+  onClick: function(state) {
+    info("Inserting " + CRLFilter.toBlacklist.id);
+    CRLFilter.filter.insert(CRLFilter.toBlacklist.id);
+    CRLFilter.blacklist.push(CRLFilter.toBlacklist.host);
+    CRLFilter.toBlacklist = false;
+    if (preferences.debug === true) {
+      this.icon = './CRLf_red.ico';
+    }
   }
 });
 
-//var messagePanel = panel
-
 // Updating the filter when the filter type has changed
 simple_prefs.on("filterSize", function () {
-  log('Changing filter type');
+  info('Changing filter type');
   CRLFilter.filterSize = preferences.filterSize;
   CRLFilter.syncFilter();
 });
 
-simple_prefs.on("enabled", function() {
-  try {
-    toggleButton.checked = preferences.enabled;
-    toggleButton.icon = changeIcon(preferences.enabled);
-  } catch (err) {
-    log(err);    
-  }    
-});
-
-simple_prefs.on("updateFilter",function() {
-  if (preferences.extraIdentifiers !== undefined &&
-      preferences.extraIdentifiers.length > 0) {
-    CRLFilter.insertExtraIdentifiers();    
-  }
-});
-
 simple_prefs.on("freshFilter", function() {
-  preferences.extraIdentifiers = "";
   CRLFilter.syncFilter();
 });
 
@@ -381,19 +395,13 @@ function getWinFromProgress(progress) {
 }
 
 function forEachOpenWindow(todo) {
-  log('forEachOpenWindow');
+  info('forEachOpenWindow');
   let windows = Services.wm.getEnumerator("navigator:browser");
   while (windows.hasMoreElements()) {
     todo(windows.getNext()
          .QueryInterface(Ci.nsIDOMWindow));
   }
 }
-
-function changeIcon(checked) {
-  return (checked) ? './CRLf_green.ico' : './CRLf_red.ico';
-}
-
-
 
 function getFilterSize() {
   let filterSizeName = preferences.filterSize;
@@ -402,12 +410,12 @@ function getFilterSize() {
   } else if (filterSizeName === "medium") {
     return 100000;
   } else {
-    return 100000000;
+    return 10000000;
   }
 }
 
 function getFilter(filterData) {
-  let b = bloom.create(getFilterSize(), 0.01);
+  let b = bloom.create(getFilterSize(), 0.001);
   b.vData = filterData;
   return b;
 }
