@@ -48,7 +48,7 @@ var CRLFilter = {
     // Load it from data folder, else sync with server
     let that = this;
     this.getStore((store) => {
-      info("initializing with store: " + JSON.stringify(store.data));
+      info("initializing store.");
       if (store.data.filterData !== undefined) {
         that.filter = getFilter(store.data.filterData);
       }
@@ -87,8 +87,7 @@ var CRLFilter = {
       store.data.blacklist = that.blacklist;
       store.data.filterSize = preferences.filterSize;
       store.data.debug = preferences.debug;
-      store.save();
-      info("uninit done");
+      store.flush().then(() => info("uninit done"));
     });
   },
 
@@ -141,9 +140,11 @@ var CRLFilter = {
 
   updateFilter: function() {
     let currentID = this.filterID;
-    syncMeta((store) => {
+    let that = this;
+    this.syncMeta((store) => {
       if (store.data.filterID > currentID) {
-        syncFilter((_) => {
+        // right now, updating just means re-downloading
+        that.syncFilter((_) => {
           info("Just updated the filter!");
         });
       }
@@ -210,8 +211,10 @@ var ProgressListener = {
     // or when the user switches tabs. If you use ProgressListener for more than one tab/window,
     // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
     info("At location change");
-    if (CRLFilter.blacklist.includes(aURI.host)) {
+    if (CRLFilter.blacklist.includes(aURI.host) && preferences.debug === true) {
       Button.icon = "./CRLf_red.ico";
+    } else {
+      Button.icon = "./CRLf_green.ico";
     }
     info(aURI);
   },
@@ -227,7 +230,6 @@ var ProgressListener = {
     let that = this;
     info("onSecurityChange");
     try {
-      info(aRequest.URI.host);
       info("web progress " + aWebProgress);
       let state = aState;
       let filter = CRLFilter.filter;
@@ -242,6 +244,7 @@ var ProgressListener = {
         let status = secUI.SSLStatus;
         if (status) {
           try {
+            info(aRequest.URI.host);
             let cert = status.serverCert;
             let chain = cert.getChain();
             CRLFilter.toBlacklist = false;
@@ -364,12 +367,14 @@ const Button = ActionButton({
   label: "SSL Most Wanted: Blacklist",
   icon: './CRLf_green.ico',
   onClick: function(state) {
-    info("Inserting " + CRLFilter.toBlacklist.id);
-    CRLFilter.filter.insert(CRLFilter.toBlacklist.id);
-    CRLFilter.blacklist.push(CRLFilter.toBlacklist.host);
-    CRLFilter.toBlacklist = false;
     if (preferences.debug === true) {
+      info("Inserting " + CRLFilter.toBlacklist.id);
+      CRLFilter.filter.insert(CRLFilter.toBlacklist.id);
+      CRLFilter.blacklist.push(CRLFilter.toBlacklist.host);
+      CRLFilter.toBlacklist = false;
       this.icon = './CRLf_red.ico';
+    } else {
+      info("Please enable DEBUG mode if you'd like to insert the current site into the filter");
     }
   }
 });
