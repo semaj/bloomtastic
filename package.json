@@ -9,9 +9,6 @@
     "firefox": ">=38.0a1",
     "fennec": ">=38.0a1"
   },
-  "permissions": {
-    "multiprocess": false
-  },
   "license": "MIT",
   "dependencies": {
     "bloom-filter": "^0.2.0",
