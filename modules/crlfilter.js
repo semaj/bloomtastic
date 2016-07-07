@@ -24,7 +24,9 @@ const ADDON_ID = self.id,
       DEFAULT = {},
       SERVER_URL = 'http://revocations.ccs.neu.edu',
       TODAYS_FILTER = '/todays-filter/',
-      TODAYS_META = '/todays-meta/';
+      TODAYS_META = '/todays-meta/',
+      LOCKED_IMG = './ssl-most-wanted-locked-16.png',
+      UNLOCKED_IMG = './ssl-most-wanted-unlocked-16.png';
 
 
 // Main logic handling of filters and revocation checking
@@ -212,9 +214,9 @@ var ProgressListener = {
     // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
     info("At location change");
     if (CRLFilter.blacklist.includes(aURI.host) && preferences.debug === true) {
-      Button.icon = "./CRLf_red.ico";
+      Button.icon = LOCKED_IMG;
     } else {
-      Button.icon = "./CRLf_green.ico";
+      Button.icon = UNLOCKED_IMG;
     }
     info(aURI);
   },
@@ -365,14 +367,14 @@ var WindowListener = {
 const Button = ActionButton({
   id: "blacklist",
   label: "SSL Most Wanted: Blacklist",
-  icon: './CRLf_green.ico',
+  icon: UNLOCKED_IMG,
   onClick: function(state) {
     if (preferences.debug === true) {
       info("Inserting " + CRLFilter.toBlacklist.id);
       CRLFilter.filter.insert(CRLFilter.toBlacklist.id);
       CRLFilter.blacklist.push(CRLFilter.toBlacklist.host);
       CRLFilter.toBlacklist = false;
-      this.icon = './CRLf_red.ico';
+      this.icon = LOCKED_IMG;
     } else {
       info("Please enable DEBUG mode if you'd like to insert the current site into the filter");
     }
