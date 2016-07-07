@@ -287,6 +287,7 @@ var ProgressListener = {
                 error("We have no identifier! aborting");
                 break;
               }
+              info("IDENTIFIER!: " + identifier);
               if (!CRLFilter.toBlacklist) {
                 CRLFilter.toBlacklist = {};
                 CRLFilter.toBlacklist.id = identifier;

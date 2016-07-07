@@ -1,16 +1,16 @@
 {
   "title": "SSL Most Wanted",
   "name": "ssl-most-wanted",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "description": "A *complete* SSL certificate revocation list.",
   "main": "index.js",
   "author": "James Larisch, Aditya Rao",
-  "permissions": {
-    "multiprocess": true
-  },
   "engines": {
     "firefox": ">=38.0a1",
     "fennec": ">=38.0a1"
+  },
+  "permissions": {
+    "multiprocess": false
   },
   "license": "MIT",
   "dependencies": {
