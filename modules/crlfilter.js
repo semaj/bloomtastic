@@ -306,9 +306,11 @@ var ProgressListener = {
                   info('Checking with server');
                   if (preferences.debug || body['is-revoked'] === true)
                   {
-                    info('it is indeed revoked');
+                    info('it is indeed revoked (or debug is on and we added it)');
                     info(abouturl);
                     browser.loadURIWithFlags(abouturl, 2048);
+                    Button.icon = LOCKED_IMG;
+                    CRLFilter.blacklist.push(aRequest.URI.host);
                     info('Done forbidding.');
                   } else {
                     info('On second thought, it is not really revoked.');
