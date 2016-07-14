@@ -1,7 +1,7 @@
 {
   "title": "SSL Most Wanted",
   "name": "ssl-most-wanted",
-  "version": "0.0.282",
+  "version": "0.0.29",
   "description": "A *complete* SSL certificate revocation list.",
   "main": "index.js",
   "author": "James Larisch, Aditya Rao",
