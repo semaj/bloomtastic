@@ -29,6 +29,7 @@ const ADDON_ID = self.id,
       UNLOCKED_IMG = './ssl-most-wanted-unlocked-16.png';
 
 
+var currentHost;
 // Main logic handling of filters and revocation checking
 var CRLFilter = {
   filter : undefined,
@@ -212,6 +213,9 @@ var ProgressListener = {
     // This fires when the location bar changes; that is load event is confirmed
     // or when the user switches tabs. If you use ProgressListener for more than one tab/window,
     // use aProgress.DOMWindow to obtain the tab/window which triggered the change.
+
+    // this is a disgusting global variable holding the current host
+    currentHost = aURI.host;
     info("At location change");
     if (CRLFilter.blacklist.includes(aURI.host) && preferences.debug === true) {
       Button.icon = LOCKED_IMG;
@@ -246,7 +250,6 @@ var ProgressListener = {
         let status = secUI.SSLStatus;
         if (status) {
           try {
-            info(aRequest.URI.host);
             let cert = status.serverCert;
             let chain = cert.getChain();
             CRLFilter.toBlacklist = false;
@@ -291,7 +294,7 @@ var ProgressListener = {
               if (!CRLFilter.toBlacklist) {
                 CRLFilter.toBlacklist = {};
                 CRLFilter.toBlacklist.id = identifier;
-                CRLFilter.toBlacklist.host = aRequest.URI.host;
+                CRLFilter.toBlacklist.host = currentHost;
               }
               if (CRLFilter.checkIdentifier(identifier)) {
                 info('********** Possibly Not Secure!');
@@ -310,7 +313,7 @@ var ProgressListener = {
                     info(abouturl);
                     browser.loadURIWithFlags(abouturl, 2048);
                     Button.icon = LOCKED_IMG;
-                    CRLFilter.blacklist.push(aRequest.URI.host);
+                    CRLFilter.blacklist.push(currentHost);
                     info('Done forbidding.');
                   } else {
                     info('On second thought, it is not really revoked.');
