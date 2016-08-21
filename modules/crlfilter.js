@@ -13,6 +13,7 @@ const self = require('sdk/self'),
       bloom = require('bloom-filter'),
       sha1 = require('sha1'),
       tabs = require('sdk/tabs'),
+      pako = require('pako'),
       ui = require('sdk/ui'),
       preferences = simple_prefs.prefs,
       STATE_START = Ci.nsIWebProgressListener.STATE_START,
@@ -25,6 +26,7 @@ const ADDON_ID = self.id,
       SERVER_URL = 'https://revocations.ccs.neu.edu',
       TODAYS_FILTER = '/todays-filter/',
       TODAYS_META = '/todays-meta/',
+      TODAYS_DIFF = '/todays-diff/',
       LOCKED_IMG = './ssl-most-wanted-locked-16.png',
       UNLOCKED_IMG = './ssl-most-wanted-unlocked-16.png';
 
@@ -123,19 +125,25 @@ var CRLFilter = {
     oReq.responseType = 'arraybuffer';
 
     oReq.onload = function (oEvent) {
-      let arrayBuffer = this.response; // Note: not oReq.responseText
-      if (arrayBuffer) {
-        let filterData = new Uint8Array(arrayBuffer);
-        that.filter = getFilter(filterData);
-        info("CHECKING SANITY");
-        info("sane?: " + !that.filter.contains("help"));
-        that.getStore((store) => {
-          store.data.filterData = filterData;
-          store.save();
-          callback(store);
-        });
-      } else {
-        error("GET filter error");
+      try {
+        let arrayBuffer = this.response; // Note: not oReq.responseText
+        if (arrayBuffer) {
+          let filterData = new Uint8Array(arrayBuffer);
+          filterData = pako.inflate(filterData);
+          that.filter = getFilter(filterData);
+          info("CHECKING SANITY");
+          info("sane?: " + !that.filter.contains("help"));
+          info("sane?: " + that.filter.contains("fdc40d42b9b61fef02f6453d7a42d1cf4cf6956b"));
+          that.getStore((store) => {
+            store.data.filterData = filterData;
+            store.save();
+            callback(store);
+          });
+        } else {
+          error("GET filter error");
+        }
+      } catch (e) {
+        error(e);
       }
     };
     oReq.send(null);
