@@ -154,10 +154,34 @@ var CRLFilter = {
     let that = this;
     this.syncMeta((store) => {
       if (store.data.filterID > currentID) {
-        // right now, updating just means re-downloading
         that.syncFilter((_) => {
-          info("Just updated the filter!");
+          info("Just updated the filter by downloading a new one.");
         });
+      } else {
+        let oReq = new XMLHttpRequest();
+        oReq.open("GET", SERVER_URL + TODAYS_DIFF + preferences.filterSize
+            + "?current_id=" + currentID, true);
+        oReq.responseType = 'arraybuffer';
+
+        oReq.onload = function (oEvent) {
+          let arrayBuffer = this.response; // Note: not oReq.responseText
+          if (arrayBuffer) {
+            let diffData = new Uint8Array(arrayBuffer);
+            diffData = pako.inflate(diffData);
+            let filterData = applyDiff(that.filter, diffData);
+            that.filter = filterData;
+            info("UPDATE CHECKING SANITY");
+            info("sane?: " + !that.filter.contains("help"));
+            that.getStore((store) => {
+              store.data.filterData = filterData;
+              store.save();
+              callback(store);
+            });
+          } else {
+            error("GET diff error");
+          }
+        };
+        oReq.send(null);
       }
     });
   },
@@ -439,6 +463,43 @@ function getFilter(filterData) {
   let b = bloom.create(getFilterSize(), 0.001);
   b.vData = filterData;
   return b;
+}
+
+function padLeft(n, str){
+  var diff = n - str.length;
+  for (var i = 0; i < diff; i++) {
+    str = "0" + str;
+  }
+  return str;
+}
+
+function bin_to_i(s) {
+  function help(x, acc) {
+    if (x.length == 0) {
+      return acc;
+    }
+    return help(x.slice(1), 2 * acc + parseInt(x[0]));
+  }
+  return help(s, 0);
+}
+
+function applyDiff(oldFilter, update) {
+  var newFilter = new Buffer(oldFilter.length);
+  assert(oldFilter.length === update.length);
+  for (var i = 0; i < oldFilter.length; i++) {
+    var old_i = padLeft(8, oldFilter[i].toString(2));
+    var diff_i = padLeft(8, update[i].toString(2));
+    var new_value = "";
+    for (var j = 0; j < old_i.length; j++) {
+      if (diff_i[j] === "1") {
+        new_value += (old_i[j] === "0" ? "1" : "0"); // flip the bit!
+      } else {
+        new_value += old_i[j];
+      }
+    }
+    newFilter[i] = bin_to_i(new_value));
+  }
+  return newFilter;
 }
 
 function revokedErrorURL(url) {
